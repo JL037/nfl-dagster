@@ -1,9 +1,18 @@
-# Local DuckDB connection. No credentials here, so this file is committed.
-# Paths are relative to dbt_project/, which is where dagster-dbt runs dbt from.
+# Snowflake connection. No secrets in this file: every value comes from an environment
+# variable, set in .env (gitignored). dagster-dbt passes Dagster's environment through to dbt.
+# Running dbt by hand? Load .env into your shell first: set -a; source ../.env; set +a
 nfl:
   target: dev
   outputs:
     dev:
-      type: duckdb
-      path: ../data/nfl.duckdb
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      # Key-pair auth, same key as Dagster's SnowflakeResource.
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      # Default schema for anything without its own; staging and marts get their own in step 4.
+      schema: ANALYTICS
       threads: 4

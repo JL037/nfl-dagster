@@ -1,15 +1,17 @@
 [project]
 name = "nfl_dagster"
 version = "0.1.0"
-description = "Learning Dagster with nflverse NFL data, DuckDB, and dbt"
+description = "Learning Dagster with nflverse NFL data, Snowflake, and dbt"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "dagster>=1.13",
     "dagster-webserver>=1.13",
-    "dagster-duckdb",
+    "dagster-snowflake",
     "dagster-dbt",
-    "dbt-duckdb",
+    "dbt-snowflake",
+    # Still used by the raw checks until they move to Snowflake (migration step 3).
+    "duckdb",
     "nflreadpy>=0.1.5",
     "polars",
     "pyarrow",
