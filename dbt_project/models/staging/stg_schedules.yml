@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_schedules
+    description: NFL schedule and results, one row per game.
+    columns:
+      - name: game_id
+        description: nflverse game id, e.g. 2025_01_ARI_NO.
+        data_tests:
+          - unique
+          - not_null
+      - name: home_team
+        data_tests:
+          - not_null
+      - name: away_team
+        data_tests:
+          - not_null

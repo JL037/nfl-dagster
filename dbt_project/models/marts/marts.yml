@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: team_season_epa
+    description: Offensive and defensive EPA per play and success rate per team and regular season.
+    columns:
+      - name: team_season_key
+        description: team and season joined, e.g. KC-2025.
+        data_tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: Null would mean a pbp team code missing from stg_teams.
+        data_tests:
+          - not_null
+
+  - name: qb_season_epa
+    description: QB EPA per dropback and success rate per regular season, minimum 200 dropbacks.
+    columns:
+      - name: qb_season_key
+        description: passer_id and season joined.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: game_results_vs_spread
+    description: Played games and whether the home or away team covered the spread.
+    columns:
+      - name: game_id
+        data_tests:
+          - unique
+          - not_null
+      - name: ats_result
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["home", "away", "push"]

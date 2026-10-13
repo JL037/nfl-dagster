@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_pbp
+    description: Pass and run plays from play-by-play, one row per play.
+    columns:
+      - name: play_key
+        description: game_id and play_id joined, e.g. 2025_01_ARI_NO-63.
+        data_tests:
+          - unique
+          - not_null
+      - name: posteam
+        description: Team with the ball.
+        data_tests:
+          - not_null
+      - name: defteam
+        description: Team on defense.
+        data_tests:
+          - not_null
+      - name: passer_id
+        description: Player id of the dropback QB, including scrambles. Null on designed runs.

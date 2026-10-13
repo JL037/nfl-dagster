@@ -19,6 +19,13 @@ models:
     # Staging models are thin cleanups of raw data: cheap views.
     staging:
       +materialized: view
+      # dagster-dbt reads meta.dagster.group to put these assets in their own group.
+      +meta:
+        dagster:
+          group: staging
     # Marts are what people query: store them as real tables.
     marts:
       +materialized: table
+      +meta:
+        dagster:
+          group: marts
