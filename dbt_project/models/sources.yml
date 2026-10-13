@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw nflverse data written as Parquet by the Dagster raw_* assets.
+    tables:
+      - name: teams
+        description: One row per NFL team (nflreadpy.load_teams).
+        config:
+          meta:
+            # dbt-duckdb: read this source straight from a Parquet file instead of a table.
+            external_location: "../data/raw/teams.parquet"
+            # dagster-dbt: this source IS the Dagster asset `raw_teams`, so the
+            # asset graph draws raw_teams -> stg_teams.
+            dagster:
+              asset_key: ["raw_teams"]

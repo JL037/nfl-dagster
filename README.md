@@ -157,7 +157,17 @@ export DAGSTER_HOME="$PWD/.dagster_home"
 
 `.dagster_home/` is gitignored.
 
+### Build the dbt manifest
+
+Dagster reads the dbt project from dbt's `manifest.json`. `dagster dev` regenerates it automatically, but other commands (like the validate step below) need it to exist first:
+
+```bash
+cd dbt_project && dbt parse && cd ..
+```
+
 ### Check that everything loads
+
+With the virtual environment activated (dagster-dbt needs `dbt` on your `PATH`):
 
 ```bash
 dagster definitions validate

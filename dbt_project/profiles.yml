@@ -1,0 +1,9 @@
+# Local DuckDB connection. No credentials here, so this file is committed.
+# Paths are relative to dbt_project/, which is where dagster-dbt runs dbt from.
+nfl:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/nfl.duckdb
+      threads: 4

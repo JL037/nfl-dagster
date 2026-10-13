@@ -1,0 +1,24 @@
+name: nfl
+version: "0.1.0"
+config-version: 2
+
+# Must match the top-level key in profiles.yml.
+profile: nfl
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  nfl:
+    # Staging models are thin cleanups of raw data: cheap views.
+    staging:
+      +materialized: view
+    # Marts are what people query: store them as real tables.
+    marts:
+      +materialized: table

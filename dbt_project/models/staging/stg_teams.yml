@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: stg_teams
+    description: Team lookup, one row per team.
+    columns:
+      - name: team_abbr
+        description: Team abbreviation used throughout nflverse (e.g. KC, PHI).
+        data_tests:
+          - unique
+          - not_null
