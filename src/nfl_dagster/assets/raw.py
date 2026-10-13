@@ -47,13 +47,18 @@ def raw_teams() -> dg.MaterializeResult:
     return dg.MaterializeResult(metadata=parquet_metadata(df, path))
 
 
+def season_path(name: str, season: int):
+    """data/raw/<name>/season=YYYY.parquet, shared by the raw assets and their checks."""
+    return RAW_DIR / name / f"season={season}.parquet"
+
+
 def write_season(df: pl.DataFrame, name: str, season: int, preview_columns: list[str]):
     """Write one season to data/raw/<name>/season=YYYY.parquet and return its metadata.
 
     One file per season means re-running a partition overwrites exactly its own file,
     and dbt reads them all back with read_parquet('.../*.parquet', union_by_name = true).
     """
-    path = RAW_DIR / name / f"season={season}.parquet"
+    path = season_path(name, season)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(path)
     return parquet_metadata(df, path, preview_columns)
