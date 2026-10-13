@@ -13,6 +13,7 @@ dependencies = [
     "nflreadpy>=0.1.5",
     "polars",
     "pyarrow",
+    "tabulate",
 ]
 
 [project.optional-dependencies]
