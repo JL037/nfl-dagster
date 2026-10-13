@@ -14,3 +14,23 @@ sources:
             # asset graph draws raw_teams -> stg_teams.
             dagster:
               asset_key: ["raw_teams"]
+
+      - name: pbp
+        description: >
+          Play-by-play, one row per play (nflreadpy.load_pbp). One Parquet file per
+          season; union_by_name lines columns up by name because some column types
+          differ between seasons (e.g. goal_to_go is an integer in 2016, a float in 2026).
+        config:
+          meta:
+            # Contains "(", so dbt-duckdb uses it as-is instead of quoting it as a path.
+            external_location: "read_parquet('../data/raw/pbp/*.parquet', union_by_name = true)"
+            dagster:
+              asset_key: ["raw_pbp"]
+
+      - name: schedules
+        description: Schedule and results, one row per game (nflreadpy.load_schedules). One Parquet file per season.
+        config:
+          meta:
+            external_location: "read_parquet('../data/raw/schedules/*.parquet', union_by_name = true)"
+            dagster:
+              asset_key: ["raw_schedules"]
