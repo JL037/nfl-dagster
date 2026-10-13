@@ -1,0 +1,192 @@
+# =============================================================================
+# nfl-dagster .gitignore
+# This is a public repo. When in doubt, ignore it.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Secrets & credentials (never commit these)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+.envrc
+.secrets/
+secrets/
+secrets.*
+*.secret
+*.secrets
+credentials*
+*credentials*.json
+service-account*.json
+*-sa.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.gpg
+*.asc
+.netrc
+.npmrc
+.pypirc
+.git-credentials
+.aws/
+.azure/
+.gcloud/
+.kube/
+.ssh/
+.docker/config.json
+token*.json
+*.token
+
+# -----------------------------------------------------------------------------
+# Data: rebuilt from nflverse at runtime, never committed
+# -----------------------------------------------------------------------------
+data/*
+!data/.gitkeep
+*.parquet
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.csv
+!dbt_project/seeds/*.csv
+*.tsv
+*.feather
+*.arrow
+*.ipc
+*.jsonl
+*.ndjson
+*.rds
+*.zip
+*.gz
+*.tar
+*.7z
+
+# -----------------------------------------------------------------------------
+# Dagster
+# -----------------------------------------------------------------------------
+.dagster_home/
+.dagster/
+.tmp_dagster_home_*/
+/tmp*/
+/storage/
+/history/
+/schedules/
+/logs/
+.telemetry/
+dagster.yaml.local
+*.dagster_cloud_cli/
+
+# -----------------------------------------------------------------------------
+# dbt
+# -----------------------------------------------------------------------------
+dbt_project/target/
+dbt_project/logs/
+dbt_project/dbt_packages/
+dbt_project/.user.yml
+dbt_project/package-lock.yml
+.user.yml
+# profiles.yml in dbt_project/ is committed on purpose (local DuckDB path only,
+# no credentials). Never commit a user-level profile:
+.dbt/
+profiles.local.yml
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+*.whl
+.installed.cfg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+.uv/
+uv.lock.bak
+
+# Testing / coverage / type checking / linting
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# Notebooks (outputs can contain data; strip before committing)
+.ipynb_checkpoints/
+*.ipynb
+
+# -----------------------------------------------------------------------------
+# Logs & scratch
+# -----------------------------------------------------------------------------
+*.log
+*.out
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+scratch/
+sandbox/
+
+# -----------------------------------------------------------------------------
+# Local notes & AI assistant state
+# -----------------------------------------------------------------------------
+HANDOFF.md
+NOTES.md
+TODO.local.md
+.claude/
+CLAUDE.local.md
+.cursor/
+.aider*
+.continue/
+.devin/
+
+# -----------------------------------------------------------------------------
+# Editors & OS
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+.zed/
+*.sublime-*
+.DS_Store
+.AppleDouble
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*:Zone.Identifier
