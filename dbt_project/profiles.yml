@@ -1,6 +1,6 @@
 # Snowflake connection. No secrets in this file: every value comes from an environment
-# variable, set in .env (gitignored). dagster-dbt passes Dagster's environment through to dbt.
-# Running dbt by hand? Load .env into your shell first: set -a; source ../.env; set +a
+# variable, set in .env (gitignored). dagster-dbt passes Dagster's environment through to dbt,
+# and dbt 1.12+ also finds ../.env by itself when run by hand from this folder.
 nfl:
   target: dev
   outputs:
