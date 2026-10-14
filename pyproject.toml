@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "python-dotenv"]
+dev = ["pytest", "python-dotenv", "matplotlib"]
 
 [build-system]
 requires = ["setuptools>=68"]

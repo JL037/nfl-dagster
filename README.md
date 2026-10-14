@@ -10,8 +10,34 @@ This is a **learning project**. The pipeline is real and runs end to end, but th
 
 ---
 
+## Start here
+
+**In two minutes:** nflverse data → Parquet → Snowflake (raw, staging, marts) → dbt, orchestrated by Dagster. A schedule refreshes the current season twice a week; every load is audited before it's committed; dbt models rebuild themselves when their inputs change, and hold back when an input fails its checks. Dev and prod are separate Snowflake databases, `main` only changes through pull requests that pass CI, and the guarantees above are covered by tests.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/fourth_down_trend-dark.png">
+  <img alt="Line chart: NFL teams went for it on fourth-and-short in competitive games 26.8% of the time in 2015 and 61.8% in 2025." src="docs/images/fourth_down_trend-light.png">
+</picture>
+
+**What's worth reading, in order:**
+
+| | Highlight | Where |
+| --- | --- | --- |
+| 1 | **A real bug, found by breaking things on purpose, and fixed for good.** The dbt models' automation gate lost a race to an asset check; the fix was write-audit-publish (validate inside the load transaction, before committing). | [Postmortem](docs/postmortems/2026-10-13-automation-gate-race.md), [`snowflake_load.py`](src/nfl_dagster/snowflake_load.py) |
+| 2 | **Separate dev and prod**, chosen by one variable, shown in the UI, with a zero-copy Snowflake clone for dev | [Environments and workflow](#environments-and-workflow), [`resources.py`](src/nfl_dagster/resources.py) |
+| 3 | **Tests that guard the guarantees**, mutation-checked: they fail if the audit or the automation gate is removed | [`tests/`](tests/), [CI](.github/workflows/ci.yml) |
+| 4 | **Schedule the source, automate the rest**: declarative automation with a quality gate | [`assets/dbt.py`](src/nfl_dagster/assets/dbt.py), [`definitions.py`](src/nfl_dagster/definitions.py) |
+| 5 | **From exploration to a tested mart**, with the metric's definition documented next to the SQL | [`team_fourth_down.sql`](dbt_project/models/marts/team_fourth_down.sql) |
+| 6 | **A warehouse migration verified against a baseline**: DuckDB → Snowflake, identical results before switching | [Design decisions](#design-decisions) |
+| 7 | **What it would take to run this in production** | [Running it in production](#running-it-in-production) |
+
+The pull requests ([#1](https://github.com/JL037/nfl-dagster/pull/1)–[#4](https://github.com/JL037/nfl-dagster/pull/4)) each explain why, what changed, and how it was tested.
+
+---
+
 ## Table of contents
 
+- [Start here](#start-here)
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
@@ -24,6 +50,7 @@ This is a **learning project**. The pipeline is real and runs end to end, but th
 - [Dagster concepts covered](#dagster-concepts-covered)
 - [Hands-on exercises](#hands-on-exercises)
 - [Design decisions](#design-decisions)
+- [Running it in production](#running-it-in-production)
 - [Cost](#cost)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
@@ -123,7 +150,11 @@ nfl-dagster/
 ├── .env.example                # Template for .env (Snowflake credentials; .env is gitignored)
 ├── .github/workflows/ci.yml    # CI on every pull request: install, dbt parse, validate, tests
 ├── scripts/
-│   └── clone_dev.py            # Recreate NFL_DEV as a zero-copy clone of NFL
+│   ├── clone_dev.py            # Recreate NFL_DEV as a zero-copy clone of NFL
+│   └── make_charts.py          # Draw the README charts from the marts
+├── docs/
+│   ├── postmortems/            # Incident write-ups
+│   └── images/                 # README charts (generated)
 ├── snowflake/
 │   └── setup.sql               # One-time Snowflake setup: warehouse, database, role, service user
 ├── src/nfl_dagster/
@@ -373,6 +404,13 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 
 ## Sample results
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/qb_epa_2025-dark.png">
+  <img alt="Bar chart of the top 10 quarterbacks by EPA per dropback in 2025, led by Drake Maye at 0.318." src="docs/images/qb_epa_2025-light.png">
+</picture>
+
+Charts are drawn from the marts by [`scripts/make_charts.py`](scripts/make_charts.py) (`NFL_ENV=prod python scripts/make_charts.py`), in light and dark versions.
+
 From the 2025 regular season:
 
 | Team | Off. EPA/play | Def. EPA/play | Net |
@@ -437,7 +475,7 @@ Small experiments for building intuition. Each one changes or breaks something o
 4. **Prove the loads are idempotent.** Materialize the same season twice, then count its rows in Snowflake (`select count(*) from nfl.raw.pbp where season = 2025`). It's 48,771 both times.
 5. **Watch automation work.** Turn on `default_automation_condition_sensor` (**Automation**), then refresh 2026 from **Jobs → current_season_refresh → Materialize all…**. Within about 30 seconds, a run you didn't launch rebuilds `stg_pbp`, `stg_schedules`, and the marts built on them. `stg_teams` stays put, because `raw_teams` didn't change.
 6. **Watch automation refuse to run.** Add a season that hasn't been loaded (e.g. change `FIRST_SEASON` to one year earlier), then refresh 2026 again. Nothing rebuilds: the dbt asset's **Automation** tab shows `any_deps_missing` true. Load the new season and automation catches up on its own, because `SINCE (handled)` remembered the pending update.
-7. **Try to sneak bad data through.** In `raw_pbp`, temporarily add a duplicated pass play (`df = pl.concat([df, df.filter(pl.col("play_type") == "pass").head(1)])`) and refresh 2026. The load's audit finds the duplicate and rolls back: the `raw_pbp` step fails, `RAW.PBP` keeps its previous rows, no materialization is recorded, and automation never rebuilds the pbp marts. (The first version of this project relied only on the automation gate, and lost a race to it: see write-audit-publish under [Design decisions](#design-decisions).)
+7. **Try to sneak bad data through.** In `raw_pbp`, temporarily add a duplicated pass play (`df = pl.concat([df, df.filter(pl.col("play_type") == "pass").head(1)])`) and refresh 2026. The load's audit finds the duplicate and rolls back: the `raw_pbp` step fails, `RAW.PBP` keeps its previous rows, no materialization is recorded, and automation never rebuilds the pbp marts. (The first version of this project relied only on the automation gate, and lost a race to it: see the [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).)
 
 ---
 
@@ -447,7 +485,7 @@ Small experiments for building intuition. Each one changes or breaks something o
 
 **Idempotent loads, one season at a time.** `snowflake_load.load_parquet()` deletes the season's rows and runs `COPY INTO` inside one transaction. Running a partition once or five times gives the same table, which is what makes backfills, retries, and fixes safe.
 
-**Write-audit-publish.** Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file. If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
+**Write-audit-publish.** (Full story: [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).) Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file. If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
 
 **Schedule the source, automate the rest.** Only the raw refresh has a schedule. The dbt models use declarative automation (`eager`), so they rebuild after their inputs change, never while an input is missing or in progress, and only the models downstream of what changed. There's no second schedule to keep in sync.
 
@@ -474,6 +512,25 @@ Small experiments for building intuition. Each one changes or breaks something o
 **The partitioned job leaves out unpartitioned assets.** A Dagster asset job can't mix assets with different partitions definitions, so the `current_season_refresh` job covers only `raw_pbp` and `raw_schedules`.
 
 **Data is not committed.** `data/` is gitignored and rebuilt from nflverse.
+
+---
+
+## Running it in production
+
+This repo runs locally: Dagster runs on a laptop, and the "lake" is a local folder. That's enough to build and prove the design, but not to operate it. Here's what production would take, roughly in the order I'd do it:
+
+| Gap today | Production approach |
+| --- | --- |
+| Dagster runs only while `make prod` is running, so schedules and automation stop when the laptop does | Host Dagster: **Dagster+** (managed control plane, code runs in your cloud), or open-source Dagster on **AWS ECS/Fargate** with a Postgres (RDS) instance for run storage and the daemon as its own service |
+| Parquet files live on one machine | **S3** as the lake: assets write to `s3://…/raw/<table>/season=YYYY.parquet`, and Snowflake reads them through an **external stage** with a storage integration (no `PUT`, no keys in code) |
+| Credentials come from a local `.env` | **AWS Secrets Manager** (or Dagster+ environment variables), key-pair auth unchanged; IAM roles instead of long-lived keys |
+| A failed Tuesday refresh is silent | **Alerting**: Dagster alert policies to Slack or email on run failure, failed checks, or a freshness policy (e.g. the current season not refreshed in 4 days) |
+| CI validates definitions but never runs SQL in Snowflake | A CI job that builds into a **per-PR zero-copy clone** (`NFL_PR_<n>`), runs `dbt build` and the asset checks, then drops it; secrets from GitHub Actions |
+| dbt models rebuild every season on each refresh | **Incremental models**, or season-partitioned dbt assets, so a refresh rebuilds only the changed season |
+| One person, one warehouse role | Separate roles for the pipeline, analysts (read `MARTS`), and admins; per-environment warehouses sized and monitored separately |
+| Deploys are a `git pull` | Build an image per merge to `main`, deploy it automatically, and keep `make prod` for local debugging only |
+
+None of this changes the core design. The assets, audits, checks, automation conditions, and dbt models stay the same; what changes is where they run and where their files and secrets live.
 
 ---
 
