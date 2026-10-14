@@ -4,9 +4,9 @@
 
 An end-to-end data pipeline that pulls NFL play-by-play data from [nflverse](https://github.com/nflverse), lands it as Parquet, loads it into [Snowflake](https://www.snowflake.com/), models it with [dbt](https://www.getdbt.com/), and orchestrates all of it with [Dagster](https://dagster.io/).
 
-This is a **learning project**. The pipeline is real and runs end to end, but the main goal is to work through Dagster's core ideas on a dataset that's fun to explore. Each Dagster feature used here is listed in [Dagster concepts covered](#dagster-concepts-covered), along with where to find it in the code and how to see it in the UI.
+I built it to learn Dagster and Snowflake in depth by running a real pipeline end to end: scheduled ingestion, loads that are audited before they're committed, declarative automation, separate dev and prod environments, CI, and a postmortem of a real bug found along the way. Every Dagster feature used is listed in [Dagster concepts covered](#dagster-concepts-covered), with where it lives in the code and how to see it in the UI.
 
-> **Status:** the core pipeline is complete: scheduled ingestion, validated loads, checks, dbt models, and declarative automation on Snowflake, with separate dev and prod environments and CI on every pull request. Learning extensions are listed in the [roadmap](#roadmap).
+> **Status:** the core pipeline is complete: scheduled ingestion, validated loads, checks, dbt models, and declarative automation on Snowflake, with separate dev and prod environments and CI on every pull request. Next steps are in the [roadmap](#roadmap).
 >
 > The project started on DuckDB and was migrated to Snowflake, with the results verified against the DuckDB build. The DuckDB version is in the git history up to commit `23b287c`.
 
@@ -33,7 +33,7 @@ This is a **learning project**. The pipeline is real and runs end to end, but th
 | 6 | **A warehouse migration verified against a baseline**: DuckDB → Snowflake, identical results before switching | [Design decisions](#design-decisions) |
 | 7 | **What it would take to run this in production** | [Running it in production](#running-it-in-production) |
 
-The pull requests ([#1](https://github.com/JL037/nfl-dagster/pull/1)–[#4](https://github.com/JL037/nfl-dagster/pull/4)) each explain why, what changed, and how it was tested.
+The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Aclosed) each explain why, what changed, and how it was tested.
 
 ---
 
@@ -50,7 +50,7 @@ The pull requests ([#1](https://github.com/JL037/nfl-dagster/pull/1)–[#4](http
 - [Data model](#data-model)
 - [Sample results](#sample-results)
 - [Dagster concepts covered](#dagster-concepts-covered)
-- [Hands-on exercises](#hands-on-exercises)
+- [Experiments I ran](#experiments-i-ran)
 - [Design decisions](#design-decisions)
 - [Running it in production](#running-it-in-production)
 - [Cost](#cost)
@@ -465,9 +465,9 @@ The 2025 numbers above are identical on DuckDB and Snowflake, which is how the m
 
 ---
 
-## Hands-on exercises
+## Experiments I ran
 
-Small experiments for building intuition. Each one changes or breaks something on purpose, then uses Dagster to see what happens.
+Each of these was run against the pipeline while building it: change or break something on purpose, then check how Dagster and Snowflake respond. They're written as steps so you can reproduce them (in dev). An earlier run of experiment 7, before the fix, is how the bug in the [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md) was found.
 
 1. **Break the warehouse, then fix it with a rerun.** In dev (`make dev`; in Snowsight, the `NFL_DEV` database), duplicate one play:
    ```sql
@@ -476,7 +476,7 @@ Small experiments for building intuition. Each one changes or breaks something o
    Run the checks for 2025 (exercise 2). `raw_pbp_unique_plays` fails with `duplicate_rows: 1`, and because the check is blocking, the run fails too. Now materialize `raw_pbp` for partition 2025. The load replaces all of 2025, the check runs again automatically, and passes. Nothing is fixed by hand: the partition is rebuilt from its source of truth.
 2. **Run checks without re-materializing.** Partitioned asset checks are a preview feature in Dagster 1.13, and the UI can't execute them on their own ("Executing checks on their own for partitioned assets is not yet supported"). The workaround is the checks-only job: **Jobs → raw_data_checks → Launchpad → Edit tags**, add `dagster/partition` = `2025`, and launch. (A checks-only job can't carry a `partitions_def` itself, because a job takes its partitions from its assets, and this one selects none.)
 3. **Watch a backfill.** Materialize all 12 seasons of `raw_pbp` and `raw_schedules` and follow it under **Runs → Backfills**.
-4. **Prove the loads are idempotent.** Materialize the same season twice, then count its rows in Snowflake (`select count(*) from nfl.raw.pbp where season = 2025`). It's 48,771 both times.
+4. **Prove the loads are idempotent.** Materialize the same season twice, then count its rows in Snowflake (`select count(*) from nfl_dev.raw.pbp where season = 2025`). It's 48,771 both times.
 5. **Watch automation work.** Turn on `default_automation_condition_sensor` (**Automation**), then refresh 2026 from **Jobs → current_season_refresh → Materialize all…**. Within about 30 seconds, a run you didn't launch rebuilds `stg_pbp`, `stg_schedules`, and the marts built on them. `stg_teams` stays put, because `raw_teams` didn't change.
 6. **Watch automation refuse to run.** Add a season that hasn't been loaded (e.g. change `FIRST_SEASON` to one year earlier), then refresh 2026 again. Nothing rebuilds: the dbt asset's **Automation** tab shows `any_deps_missing` true. Load the new season and automation catches up on its own, because `SINCE (handled)` remembered the pending update.
 7. **Try to sneak bad data through.** In `raw_pbp`, temporarily add a duplicated pass play (`df = pl.concat([df, df.filter(pl.col("play_type") == "pass").head(1)])`) and refresh 2026. The load's audit finds the duplicate and rolls back: the `raw_pbp` step fails, `RAW.PBP` keeps its previous rows, no materialization is recorded, and automation never rebuilds the pbp marts. (The first version of this project relied only on the automation gate, and lost a race to it: see the [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).)
@@ -605,7 +605,7 @@ Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagst
 - [x] Separate dev and prod environments; CI and a protected `main`
 - [x] Tests: definitions, environment selection, and write-audit-publish
 
-**Learning extensions**
+**Next steps**
 
 - [ ] Incremental or season-partitioned dbt models
 - [ ] More checks: completeness (a finished season has at least 267 games), freshness, value ranges
