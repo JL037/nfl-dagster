@@ -1,5 +1,7 @@
 # nfl-dagster
 
+[![CI](https://github.com/JL037/nfl-dagster/actions/workflows/ci.yml/badge.svg)](https://github.com/JL037/nfl-dagster/actions/workflows/ci.yml)
+
 An end-to-end data pipeline that pulls NFL play-by-play data from [nflverse](https://github.com/nflverse), lands it as Parquet, loads it into [Snowflake](https://www.snowflake.com/), models it with [dbt](https://www.getdbt.com/), and orchestrates all of it with [Dagster](https://dagster.io/).
 
 This is a **learning project**. The pipeline is real and runs end to end, but the main goal is to work through Dagster's core ideas on a dataset that's fun to explore. Each Dagster feature used here is listed in [Dagster concepts covered](#dagster-concepts-covered), along with where to find it in the code and how to see it in the UI.
@@ -292,6 +294,8 @@ make clone-dev     # create or replace database NFL_DEV clone NFL
 
 The clone is instant and shares storage with production until either side changes, so it costs nothing up front. Re-run it whenever dev gets messy. The script can only ever replace a `*_DEV` database.
 
+One thing a clone doesn't copy: **Dagster's run history.** `NFL_DEV` has every season's data, but the dev Dagster instance has never recorded materializing it, so the dev UI shows those assets as never materialized, and automation in dev treats their partitions as missing (it won't rebuild dbt models until they're loaded). Materialize the raw assets in dev (a backfill) when you need automation to behave there as it does in prod.
+
 **Branch flow.**
 
 1. Branch from `main`: `git switch -c step-8-tests`
@@ -465,9 +469,9 @@ The 2025 numbers above are identical on DuckDB and Snowflake, which is how the m
 
 Small experiments for building intuition. Each one changes or breaks something on purpose, then uses Dagster to see what happens.
 
-1. **Break the warehouse, then fix it with a rerun.** In Snowsight, duplicate one play:
+1. **Break the warehouse, then fix it with a rerun.** In dev (`make dev`; in Snowsight, the `NFL_DEV` database), duplicate one play:
    ```sql
-   insert into nfl.raw.pbp select * from nfl.raw.pbp where season = 2025 limit 1;
+   insert into nfl_dev.raw.pbp select * from nfl_dev.raw.pbp where season = 2025 limit 1;
    ```
    Run the checks for 2025 (exercise 2). `raw_pbp_unique_plays` fails with `duplicate_rows: 1`, and because the check is blocking, the run fails too. Now materialize `raw_pbp` for partition 2025. The load replaces all of 2025, the check runs again automatically, and passes. Nothing is fixed by hand: the partition is rebuilt from its source of truth.
 2. **Run checks without re-materializing.** Partitioned asset checks are a preview feature in Dagster 1.13, and the UI can't execute them on their own ("Executing checks on their own for partitioned assets is not yet supported"). The workaround is the checks-only job: **Jobs → raw_data_checks → Launchpad → Edit tags**, add `dagster/partition` = `2025`, and launch. (A checks-only job can't carry a `partitions_def` itself, because a job takes its partitions from its assets, and this one selects none.)
