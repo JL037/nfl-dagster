@@ -525,14 +525,16 @@ This repo runs locally: Dagster runs on a laptop, and the "lake" is a local fold
 
 | Gap today | Production approach |
 | --- | --- |
-| Dagster runs only while `make prod` is running, so schedules and automation stop when the laptop does | Host Dagster: **Dagster+** (managed control plane, code runs in your cloud), or open-source Dagster on **AWS ECS/Fargate** with a Postgres (RDS) instance for run storage and the daemon as its own service |
-| Parquet files live on one machine | **S3** as the lake: assets write to `s3://…/raw/<table>/season=YYYY.parquet`, and Snowflake reads them through an **external stage** with a storage integration (no `PUT`, no keys in code) |
-| Credentials come from a local `.env` | **AWS Secrets Manager** (or Dagster+ environment variables), key-pair auth unchanged; IAM roles instead of long-lived keys |
-| A failed Tuesday refresh is silent | **Alerting**: Dagster alert policies to Slack or email on run failure, failed checks, or a freshness policy (e.g. the current season not refreshed in 4 days) |
-| CI validates definitions but never runs SQL in Snowflake | A CI job that builds into a **per-PR zero-copy clone** (`NFL_PR_<n>`), runs `dbt build` and the asset checks, then drops it; secrets from GitHub Actions |
+| Dagster runs only while `make prod` is running, so schedules and automation stop when the laptop does | Host Dagster: **Dagster+** (Serverless, or Hybrid with the code running in your own cloud), or open-source Dagster on **AWS ECS/Fargate**: webserver, daemon, and code server as services, runs launched as tasks (dagster-aws's `EcsRunLauncher`), and Postgres (RDS) for run storage |
+| Deploys are a `git pull` | Build and deploy automatically on each merge to `main` (Dagster+ ships GitHub Actions for this); keep `make prod` for local debugging only |
+| Parquet files live on one machine | **S3** as the lake: assets write to `s3://…/raw/<table>/season=YYYY.parquet`, and Snowflake reads them through an **external stage** with a storage integration (an IAM role, so no `PUT` and no AWS keys in code). **Bucket versioning** keeps every delivery as received, including ones the audit rejected |
+| Credentials come from a local `.env` | Secrets in **AWS Secrets Manager** (or Dagster+ environment variables). The Snowflake private key stays a secret there, rotated with Snowflake's second key slot (`rsa_public_key_2`); AWS access uses IAM roles, not long-lived keys |
+| A failed Tuesday refresh is silent | **Alerting**: a run-failure sensor posting to Slack or email (Dagster+ alert policies do the same), plus **freshness checks** that fail if the current season hasn't refreshed in, say, 4 days |
+| A blip in the nflverse download fails the run | A **retry policy with exponential backoff** on the raw assets, so transient network errors don't need a human |
+| Season partitions are computed when the code loads, so a long-running deployment only gains next season's partition after a reload | Redeploy at the start of each season, or switch to **dynamic partitions** that a sensor adds when nflverse publishes a new season |
+| CI validates definitions but never runs SQL in Snowflake | A CI job that builds into a **per-PR zero-copy clone** (`NFL_PR_<n>`), runs `dbt build` and the asset checks, then drops it; on Dagster+, **branch deployments** give each PR its own Dagster instance to pair with the clone |
 | dbt models rebuild every season on each refresh | **Incremental models**, or season-partitioned dbt assets, so a refresh rebuilds only the changed season |
-| One person, one warehouse role | Separate roles for the pipeline, analysts (read `MARTS`), and admins; per-environment warehouses sized and monitored separately |
-| Deploys are a `git pull` | Build an image per merge to `main`, deploy it automatically, and keep `make prod` for local debugging only |
+| One person, one warehouse role | Separate roles for the pipeline, analysts (read `MARTS`), and admins; per-environment warehouses, each with its own resource monitor |
 
 None of this changes the core design. The assets, audits, checks, automation conditions, and dbt models stay the same; what changes is where they run and where their files and secrets live.
 
