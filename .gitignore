@@ -166,8 +166,8 @@ sandbox/
 # Local notes & AI assistant state
 # -----------------------------------------------------------------------------
 HANDOFF.md
-# Private working docs (incident write-ups, notes)
-docs/
+# Private working notes. Public docs (postmortems, images) live elsewhere under docs/.
+docs/private/
 NOTES.md
 TODO.local.md
 .claude/
