@@ -10,8 +10,6 @@ dependencies = [
     "dagster-snowflake",
     "dagster-dbt",
     "dbt-snowflake",
-    # Still used by the raw checks until they move to Snowflake (migration step 3).
-    "duckdb",
     "nflreadpy>=0.1.5",
     "polars",
     "pyarrow",
