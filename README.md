@@ -33,7 +33,7 @@ This is a **learning project**. The pipeline is real and runs end to end, but th
 
 ## What it does
 
-1. **Extract:** downloads play-by-play, schedules, and team data for the 2016 through current NFL seasons using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
+1. **Extract:** downloads play-by-play, schedules, and team data for the 2015 through current NFL seasons using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
 2. **Land:** writes each season to its own Parquet file under `data/raw/`. These files are the source of truth (the "lake").
 3. **Load:** uploads each file to a Snowflake stage and copies it into a raw table, replacing exactly that season's rows.
 4. **Validate:** runs Dagster asset checks against each season in Snowflake, such as "no duplicate plays" and "scores are either both present or both missing."
@@ -121,7 +121,7 @@ nfl-dagster/
 │   └── setup.sql               # One-time Snowflake setup: warehouse, database, role, service user
 ├── src/nfl_dagster/
 │   ├── definitions.py          # Entry point: the Dagster Definitions object
-│   ├── partitions.py           # Season partitions (2016 → current season)
+│   ├── partitions.py           # Season partitions (2015 → current season)
 │   ├── resources.py            # SnowflakeResource + dbt resource, all settings from env vars
 │   ├── snowflake_load.py       # load_parquet(): PUT to a stage, then COPY INTO, per season
 │   ├── checks.py               # Partitioned, blocking asset checks on the raw tables
@@ -335,9 +335,9 @@ From the 2025 regular season:
 | B.Purdy | SF | 316 | 0.202 | 0.532 |
 | J.Goff | DET | 619 | 0.177 | 0.486 |
 
-Across every game played since 2016, home teams covered the spread in 48.0% of games, away teams in 49.5%, and 2.5% were pushes.
+Across every game played since 2015, home teams covered the spread in 47.7% of games, away teams in 49.7%, and 2.6% were pushes.
 
-These numbers are identical on DuckDB and Snowflake, which is how the migration was verified.
+The 2025 numbers above are identical on DuckDB and Snowflake, which is how the migration was verified. (2015 was added after the migration, by extending the season partitions back one year.)
 
 ---
 
@@ -371,7 +371,7 @@ Small experiments for building intuition. Each one changes or breaks something o
    ```
    Run the checks for 2025 (exercise 2). `raw_pbp_unique_plays` fails with `duplicate_rows: 1`, and because the check is blocking, the run fails too. Now materialize `raw_pbp` for partition 2025. The load replaces all of 2025, the check runs again automatically, and passes. Nothing is fixed by hand: the partition is rebuilt from its source of truth.
 2. **Run checks without re-materializing.** Partitioned asset checks are a preview feature in Dagster 1.13, and the UI can't execute them on their own ("Executing checks on their own for partitioned assets is not yet supported"). The workaround is the checks-only job: **Jobs → raw_data_checks → Launchpad → Edit tags**, add `dagster/partition` = `2025`, and launch. (A checks-only job can't carry a `partitions_def` itself, because a job takes its partitions from its assets, and this one selects none.)
-3. **Watch a backfill.** Materialize all 11 seasons of `raw_pbp` and `raw_schedules` and follow it under **Runs → Backfills**.
+3. **Watch a backfill.** Materialize all 12 seasons of `raw_pbp` and `raw_schedules` and follow it under **Runs → Backfills**.
 4. **Prove the loads are idempotent.** Materialize the same season twice, then count its rows in Snowflake (`select count(*) from nfl.raw.pbp where season = 2025`). It's 48,771 both times.
 5. *(Planned, with automation)* **Watch automation refuse to run.** With `AutomationCondition.eager()` on the dbt models, load only some seasons: eager won't run while any upstream partition is missing, and the asset's **Automation** tab shows `any_deps_missing` as the reason.
 
@@ -387,7 +387,7 @@ Small experiments for building intuition. Each one changes or breaks something o
 
 **Tables created from the file's own schema.** The first load creates each table with `INFER_SCHEMA`, so the 372 play-by-play columns don't need a hand-written `CREATE TABLE`. `IGNORE_CASE => TRUE` gives plain uppercase column names, so SQL doesn't need quotes around every column. Columns are matched by name (`MATCH_BY_COLUMN_NAME`), not position.
 
-**Schema drift measured, then pinned.** Across 11 seasons, only one column changes type: `goal_to_go` is an integer in 7 seasons and a float in 4. `raw_pbp` casts it to a float before writing, so every season's file matches the table.
+**Schema drift measured, then pinned.** Across the 2016–2026 seasons, only one column changes type: `goal_to_go` is an integer in 7 seasons and a float in 4. `raw_pbp` casts it to a float before writing, so every season's file matches the table.
 
 **Least-privilege access with key-pair auth.** The pipeline runs as `NFL_SVC`, a service user that can't log in with a password, under `NFL_ROLE`, which owns only the `NFL` database. No secret is in the repo: every setting comes from environment variables, and the private key lives outside the project.
 
@@ -409,7 +409,7 @@ Small experiments for building intuition. Each one changes or breaks something o
 
 ## Cost
 
-Everything runs on an X-Small warehouse (1 credit per hour while running) that suspends after 60 seconds idle. A full backfill of all 11 seasons plus a dbt build keeps it busy for a few minutes. The resource monitor `NFL_MONITOR` notifies at 80% of 10 credits per month and suspends the warehouse at 100%, so a runaway job can't drain a trial's credits.
+Everything runs on an X-Small warehouse (1 credit per hour while running) that suspends after 60 seconds idle. A full backfill of all 12 seasons plus a dbt build keeps it busy for a few minutes. The resource monitor `NFL_MONITOR` notifies at 80% of 10 credits per month and suspends the warehouse at 100%, so a runaway job can't drain a trial's credits.
 
 To see usage (as `ACCOUNTADMIN`; this view can lag by a few hours):
 
