@@ -37,5 +37,4 @@ jobs:
         run: dagster definitions validate
 
       - name: Run tests
-        # Exit code 5 means "no tests collected"; allowed until the definitions test lands.
-        run: pytest || [ $? -eq 5 ]
+        run: pytest

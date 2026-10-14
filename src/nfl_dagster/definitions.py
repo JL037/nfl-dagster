@@ -3,7 +3,7 @@ import dagster as dg
 from nfl_dagster.assets.dbt import nfl_dbt_models
 from nfl_dagster.assets.raw import raw_pbp, raw_schedules, raw_teams
 from nfl_dagster.checks import raw_pbp_unique_plays, raw_schedules_scores_present
-from nfl_dagster.partitions import CURRENT_SEASON, season_partitions
+from nfl_dagster.partitions import CURRENT_SEASON
 from nfl_dagster.resources import dbt_resource, snowflake_resource
 
 # Runs only the raw checks, without re-materializing the assets they check.
@@ -19,10 +19,10 @@ raw_data_checks = dg.define_asset_job(
 # blocking checks run in the same run. raw_teams and the dbt models aren't in this job:
 # an asset job can only hold assets with the same partitions definition, and the dbt
 # models update through declarative automation instead (see assets/dbt.py).
+# Its partitions (one per season) come from the selected assets.
 current_season_refresh = dg.define_asset_job(
     "current_season_refresh",
     selection=[raw_pbp, raw_schedules],
-    partitions_def=season_partitions,
 )
 
 
