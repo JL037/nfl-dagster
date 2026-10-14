@@ -1,0 +1,7 @@
+# Loaded by `make dev` (NFL_ENV=dev, http://localhost:3000). The location name shows on every
+# job, asset, and run page ("Job in nfl_dagster_dev"), so you always know which warehouse a
+# button will write to.
+load_from:
+  - python_module:
+      module_name: nfl_dagster.definitions
+      location_name: nfl_dagster_dev

@@ -1,0 +1,5 @@
+# Loaded by `make prod` (NFL_ENV=prod, http://localhost:3001). See dev.yaml.
+load_from:
+  - python_module:
+      module_name: nfl_dagster.definitions
+      location_name: nfl_dagster_prod
