@@ -3,9 +3,9 @@ version: 2
 sources:
   - name: raw
     description: Raw nflverse data, loaded into Snowflake by the Dagster raw_* assets.
-    # NFL.RAW, the schema the raw assets COPY INTO. The database comes from the same
-    # environment variable the profile uses.
-    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    # <database>.RAW, the schema the raw assets COPY INTO, in whichever database the current
+    # target builds into (NFL_DEV for dev, NFL for prod).
+    database: "{{ target.database }}"
     schema: RAW
     tables:
       - name: teams

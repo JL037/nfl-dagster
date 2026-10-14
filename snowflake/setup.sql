@@ -8,6 +8,7 @@
 --   NFL_ROLE   everything the pipeline needs, nothing more
 --   NFL_SVC    a service user for Dagster and dbt: key-pair auth only, no password
 --   NFL_MONITOR a credit cap that suspends the warehouse if usage runs away
+--   NFL_DEV    created later by `make clone-dev`, as a zero-copy clone of NFL
 --
 -- Before running: replace <YOUR_USERNAME> and <PUBLIC_KEY> below.
 -- <PUBLIC_KEY> is the body of your .pub file without the BEGIN/END lines.
@@ -52,6 +53,10 @@ grant role nfl_role to user nfl_svc;
 
 -- Let your own login use the role too, to browse the data in Snowsight.
 grant role nfl_role to user <YOUR_USERNAME>;
+
+-- Let the role create databases, so it can own the dev clone (NFL_DEV) it creates with
+-- `make clone-dev`: create or replace database NFL_DEV clone NFL.
+grant create database on account to role nfl_role;
 
 -- The raw schema, created as the role so the role owns it.
 use role nfl_role;

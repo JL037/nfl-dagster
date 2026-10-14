@@ -1,0 +1,41 @@
+name: CI
+
+# Runs on every pull request and on main. It never connects to Snowflake: placeholder
+# values satisfy dbt's env_var() calls, because parsing and validation don't open a
+# connection. No secrets are stored in this public repo.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: ci-placeholder
+      SNOWFLAKE_USER: ci-placeholder
+      SNOWFLAKE_PRIVATE_KEY_PATH: /dev/null
+      SNOWFLAKE_ROLE: ci-placeholder
+      SNOWFLAKE_WAREHOUSE: ci-placeholder
+      NFL_ENV: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Parse the dbt project (writes target/manifest.json)
+        working-directory: dbt_project
+        run: dbt parse
+
+      - name: Validate the Dagster definitions
+        run: dagster definitions validate
+
+      - name: Run tests
+        # Exit code 5 means "no tests collected"; allowed until the definitions test lands.
+        run: pytest || [ $? -eq 5 ]
