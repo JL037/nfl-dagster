@@ -1,8 +1,11 @@
-# Snowflake connection. No secrets in this file: every value comes from an environment
-# variable, set in .env (gitignored). dagster-dbt passes Dagster's environment through to dbt,
+# Snowflake connection. No secrets in this file: credentials come from environment
+# variables, set in .env (gitignored). dagster-dbt passes Dagster's environment through to dbt,
 # and dbt 1.12+ also finds ../.env by itself when run by hand from this folder.
+#
+# Two targets, one per environment. They differ only in the database. The target comes from
+# NFL_ENV (set by `make dev` / `make prod`, or `dbt build --target prod`) and defaults to dev.
 nfl:
-  target: dev
+  target: "{{ env_var('NFL_ENV', 'dev') }}"
   outputs:
     dev:
       type: snowflake
@@ -12,7 +15,17 @@ nfl:
       private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
       role: "{{ env_var('SNOWFLAKE_ROLE') }}"
       warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
-      database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
-      # Default schema for anything without its own; staging and marts get their own in step 4.
+      database: NFL_DEV
+      # Default schema for anything without its own; staging and marts get their own.
+      schema: ANALYTICS
+      threads: 4
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: NFL
       schema: ANALYTICS
       threads: 4

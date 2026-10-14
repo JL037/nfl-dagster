@@ -17,6 +17,7 @@ This is a **learning project**. The pipeline is real and runs end to end, but th
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [Getting started](#getting-started)
+- [Environments and workflow](#environments-and-workflow)
 - [Running the pipeline](#running-the-pipeline)
 - [Data model](#data-model)
 - [Sample results](#sample-results)
@@ -116,13 +117,17 @@ Dagster runs locally. The only cloud account needed is Snowflake (a free trial i
 ```
 nfl-dagster/
 ├── pyproject.toml              # Package metadata, dependencies, Dagster module config
-├── .env.example                # Template for .env (Snowflake settings; .env is gitignored)
+├── Makefile                    # make dev / prod / clone-dev / validate / test
+├── .env.example                # Template for .env (Snowflake credentials; .env is gitignored)
+├── .github/workflows/ci.yml    # CI on every pull request: install, dbt parse, validate, tests
+├── scripts/
+│   └── clone_dev.py            # Recreate NFL_DEV as a zero-copy clone of NFL
 ├── snowflake/
 │   └── setup.sql               # One-time Snowflake setup: warehouse, database, role, service user
 ├── src/nfl_dagster/
 │   ├── definitions.py          # Entry point: the Dagster Definitions object
 │   ├── partitions.py           # Season partitions (2015 → current season)
-│   ├── resources.py            # SnowflakeResource + dbt resource, all settings from env vars
+│   ├── resources.py            # NFL_ENV → database + dbt target; SnowflakeResource, dbt resource
 │   ├── snowflake_load.py       # load_parquet(): PUT to a stage, then COPY INTO, per season
 │   ├── checks.py               # Partitioned, blocking asset checks on the raw tables
 │   └── assets/
@@ -130,11 +135,11 @@ nfl-dagster/
 │       └── dbt.py              # dbt models loaded as Dagster assets
 ├── dbt_project/
 │   ├── dbt_project.yml         # Staging → views in STAGING, marts → tables in MARTS
-│   ├── profiles.yml            # Snowflake connection, key-pair auth, values from env vars
+│   ├── profiles.yml            # dev and prod targets (NFL_DEV / NFL), key-pair auth
 │   ├── macros/
 │   │   └── generate_schema_name.sql
 │   └── models/
-│       ├── sources.yml         # NFL.RAW tables, mapped to the raw_* Dagster assets
+│       ├── sources.yml         # <database>.RAW tables, mapped to the raw_* Dagster assets
 │       ├── staging/            # stg_pbp, stg_schedules, stg_teams (+ tests)
 │       └── marts/              # team_season_epa, qb_season_epa, game_results_vs_spread (+ tests)
 └── data/                       # Created at runtime; not committed
@@ -204,24 +209,53 @@ Fill in `SNOWFLAKE_ACCOUNT` (your account identifier, `<orgname>-<accountname>`;
 
 `.env` is gitignored. Both Dagster's commands and dbt (1.12+) load it automatically: dbt looks for a `.env` in the current folder and its parents, so running dbt from `dbt_project/` finds it.
 
-### 5. Check the connection and build the dbt manifest
+### 5. Check the connection
 
 ```bash
 cd dbt_project
-dbt debug        # should end with "All checks passed!"
-dbt parse        # writes target/manifest.json, which Dagster reads
+dbt debug        # should end with "All checks passed!" (dev target, NFL_DEV)
 cd ..
 ```
 
-### 6. Set a Dagster home and validate
-
-Without `DAGSTER_HOME`, `dagster dev` keeps run history in a temporary folder that is deleted when it stops.
+### 6. Validate
 
 ```bash
-mkdir -p .dagster_home && touch .dagster_home/dagster.yaml
-export DAGSTER_HOME="$PWD/.dagster_home"
-dagster definitions validate     # "All code locations passed validation."
+make validate    # builds the dbt manifest, then: "All code locations passed validation."
 ```
+
+The Makefile uses the project's `.venv` directly. `make help` lists every command.
+
+---
+
+## Environments and workflow
+
+The project separates **code** environments (git branches) from **data** environments (Snowflake databases), because a data pipeline's job is writing data: branching the code alone would still write to the same tables.
+
+| | Dev | Prod |
+| --- | --- | --- |
+| Snowflake database | `NFL_DEV` | `NFL` |
+| dbt target | `dev` | `prod` |
+| Dagster home (run history) | `.dagster_home/dev` | `.dagster_home/prod` |
+| Start it | `make dev` | `make prod` (only from `main`) |
+| Used for | Feature branches, experiments, breaking things on purpose | Code that has been merged to `main` |
+
+**How the environment is chosen.** One variable, `NFL_ENV` (`dev` or `prod`), picks the database for Dagster's Snowflake resource and the dbt target; `make dev` / `make prod` set it along with a matching `DAGSTER_HOME`, so dev and prod run history never mix. If `NFL_ENV` isn't set, it defaults to **dev**, so production is only ever used on purpose. `NFL_ENV` is deliberately **not** in `.env`: Dagster's `.env` loading overrides the shell, so a value there would silently win over what you type. `.env` holds credentials only.
+
+**A dev database in seconds.** `NFL_DEV` is a Snowflake **zero-copy clone** of `NFL`:
+
+```bash
+make clone-dev     # create or replace database NFL_DEV clone NFL
+```
+
+The clone is instant and shares storage with production until either side changes, so it costs nothing up front. Re-run it whenever dev gets messy. The script can only ever replace a `*_DEV` database.
+
+**Branch flow.**
+
+1. Branch from `main`: `git switch -c step-8-tests`
+2. Work against dev: `make dev` (re-clone first with `make clone-dev` if you want fresh data)
+3. Open a pull request. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs the project, parses the dbt project, validates the Dagster definitions, and runs the tests. It needs no Snowflake credentials, so no secrets live in this public repo.
+4. Merge when CI is green. `main` is protected: changes land only through pull requests that pass CI.
+5. Run production from `main` with `make prod`.
 
 ---
 
@@ -230,7 +264,7 @@ dagster definitions validate     # "All code locations passed validation."
 ### Start the UI
 
 ```bash
-dagster dev
+make dev           # against NFL_DEV; use `make prod` (from main) for production
 ```
 
 Then open <http://localhost:3000>.
@@ -243,7 +277,7 @@ Then open <http://localhost:3000>.
 
 ### Query the results
 
-In a Snowsight worksheet, using role `NFL_ROLE` and warehouse `NFL_WH`:
+In a Snowsight worksheet, using role `NFL_ROLE` and warehouse `NFL_WH` (use `nfl_dev` instead of `nfl` for the dev database):
 
 ```sql
 select team, team_name, off_epa_per_play, def_epa_per_play, net_epa_per_play
@@ -264,19 +298,20 @@ with dg.build_resources({"snowflake": snowflake_resource}) as r:
         print(conn.cursor().execute("select count(*) from nfl.raw.pbp").fetchone())
 ```
 
-(Run it with `.env` loaded into the shell, e.g. `set -a; source .env; set +a`. Unlike Dagster's commands and dbt, plain Python doesn't read `.env`.)
+(Run it with `.env` loaded into the shell, e.g. `set -a; source .env; set +a`. Unlike Dagster's commands and dbt, plain Python doesn't read `.env`. It connects to dev unless `NFL_ENV=prod` is set.)
 
 ### Run dbt by hand (optional)
 
 ```bash
 cd dbt_project
-dbt build
+dbt build                  # dev target (NFL_DEV)
+dbt build --target prod    # production, deliberately
 ```
 
 ### Run tests
 
 ```bash
-pytest
+make test
 ```
 
 *(The definitions test is on the roadmap; until it lands, pytest finds nothing to run.)*
@@ -449,7 +484,7 @@ Reload the code location from the **Deployment** page, then hard-refresh the bro
 The code server stopped (for example after the computer slept). Reload from **Deployment**, or restart `dagster dev`. Assets with "–" can also be leftovers from renamed assets; they only have history, not code.
 
 **Run history disappears after restarting `dagster dev`**
-Set `DAGSTER_HOME` as described in [Getting started](#6-set-a-dagster-home-and-validate).
+Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagster_home/dev` or `.dagster_home/prod`. Plain `dagster dev` without it uses a temporary folder.
 
 ---
 
