@@ -35,3 +35,23 @@ models:
           - accepted_values:
               arguments:
                 values: ["home", "away", "push"]
+
+  - name: team_fourth_down
+    description: >
+      Fourth-and-short decisions per team and regular season: go-for-it rate and conversion
+      rate, in competitive game states (win probability 10-90%). See the SQL for why each
+      filter is there.
+    columns:
+      - name: team_season_key
+        description: team and season joined, e.g. IND-2025.
+        data_tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: Null would mean a team code missing from stg_teams.
+        data_tests:
+          - not_null
+      - name: go_pct
+        description: Percent of fourth-and-short decisions where the team went for it.
+      - name: conversion_pct
+        description: Percent of go-for-it attempts that gained a first down. Null if the team never went for it.
