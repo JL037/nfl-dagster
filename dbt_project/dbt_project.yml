@@ -19,6 +19,9 @@ models:
     # Staging models are thin cleanups of raw data: cheap views.
     staging:
       +materialized: view
+      # Builds into NFL.STAGING (see macros/generate_schema_name.sql). dagster-dbt also adds
+      # the schema to the asset key: staging/stg_pbp.
+      +schema: staging
       # dagster-dbt reads meta.dagster.group to put these assets in their own group.
       +meta:
         dagster:
@@ -26,6 +29,7 @@ models:
     # Marts are what people query: store them as real tables.
     marts:
       +materialized: table
+      +schema: marts
       +meta:
         dagster:
           group: marts

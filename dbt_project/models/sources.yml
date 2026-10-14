@@ -2,14 +2,16 @@ version: 2
 
 sources:
   - name: raw
-    description: Raw nflverse data written as Parquet by the Dagster raw_* assets.
+    description: Raw nflverse data, loaded into Snowflake by the Dagster raw_* assets.
+    # NFL.RAW, the schema the raw assets COPY INTO. The database comes from the same
+    # environment variable the profile uses.
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: RAW
     tables:
       - name: teams
         description: One row per NFL team (nflreadpy.load_teams).
         config:
           meta:
-            # dbt-duckdb: read this source straight from a Parquet file instead of a table.
-            external_location: "../data/raw/teams.parquet"
             # dagster-dbt: this source IS the Dagster asset `raw_teams`, so the
             # asset graph draws raw_teams -> stg_teams.
             dagster:
@@ -17,20 +19,16 @@ sources:
 
       - name: pbp
         description: >
-          Play-by-play, one row per play (nflreadpy.load_pbp). One Parquet file per
-          season; union_by_name lines columns up by name because some column types
-          differ between seasons (e.g. goal_to_go is an integer in 2016, a float in 2026).
+          Play-by-play, one row per play (nflreadpy.load_pbp), all seasons in one table.
+          Each Dagster partition replaces one season's rows.
         config:
           meta:
-            # Contains "(", so dbt-duckdb uses it as-is instead of quoting it as a path.
-            external_location: "read_parquet('../data/raw/pbp/*.parquet', union_by_name = true)"
             dagster:
               asset_key: ["raw_pbp"]
 
       - name: schedules
-        description: Schedule and results, one row per game (nflreadpy.load_schedules). One Parquet file per season.
+        description: Schedule and results, one row per game (nflreadpy.load_schedules), all seasons.
         config:
           meta:
-            external_location: "read_parquet('../data/raw/schedules/*.parquet', union_by_name = true)"
             dagster:
               asset_key: ["raw_schedules"]
