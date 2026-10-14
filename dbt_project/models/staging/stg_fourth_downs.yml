@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_fourth_downs
+    description: >
+      One row per fourth-down decision (went for it, punted, or kicked a field goal), all
+      seasons and game types. Penalties that wiped out the play, kneels, and spikes are left out.
+    columns:
+      - name: play_key
+        description: game_id and play_id joined, e.g. 2025_01_BAL_BUF-3765.
+        data_tests:
+          - unique
+          - not_null
+      - name: posteam
+        description: Team facing the fourth down.
+        data_tests:
+          - not_null
+      - name: play_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["pass", "run", "punt", "field_goal"]
+      - name: went_for_it
+        description: True for pass or run (including fakes), false for punt or field goal.

@@ -142,8 +142,9 @@ nfl-dagster/
 │   │   └── generate_schema_name.sql
 │   └── models/
 │       ├── sources.yml         # <database>.RAW tables, mapped to the raw_* Dagster assets
-│       ├── staging/            # stg_pbp, stg_schedules, stg_teams (+ tests)
-│       └── marts/              # team_season_epa, qb_season_epa, game_results_vs_spread (+ tests)
+│       ├── staging/            # stg_pbp, stg_schedules, stg_teams, stg_fourth_downs (+ tests)
+│       └── marts/              # team_season_epa, qb_season_epa, game_results_vs_spread, team_fourth_down (+ tests)
+│   └── tests/                  # Singular dbt tests (a query that must return no rows)
 ├── tests/                      # No Snowflake needed; runs in CI
 │   ├── test_definitions.py     # Assets, checks, lineage, automation, job, schedule
 │   ├── test_resources.py       # NFL_ENV → database and dbt target
@@ -284,7 +285,7 @@ Then open <http://localhost:3000> for dev, or <http://localhost:3001> for prod. 
 
 1. **Materialize `raw_teams`.** It's unpartitioned, so it's a single click.
 2. **Backfill the seasons.** Select `raw_pbp` and `raw_schedules`, click **Materialize selected**, and choose all partitions. This launches a backfill: one run per season (both assets share a partitions definition, so they run together). Track it under **Runs → Backfills**.
-3. **Build the dbt models.** Select the 6 assets in the `staging` and `marts` groups and click **Materialize selected**. All of them come from one `@dbt_assets` definition, so this is one run of `dbt build`, which also runs the 18 dbt tests.
+3. **Build the dbt models.** Select the 8 assets in the `staging` and `marts` groups and click **Materialize selected**. All of them come from one `@dbt_assets` definition, so this is one run of `dbt build`, which also runs the 26 dbt tests.
 
 ### Query the results
 
@@ -329,7 +330,7 @@ The suite needs no Snowflake connection, so it runs in CI on every pull request:
 
 | File | What it proves |
 | --- | --- |
-| `tests/test_definitions.py` | The 9 assets and 20 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
+| `tests/test_definitions.py` | The 11 assets and 28 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
 | `tests/test_resources.py` | `NFL_ENV` maps to the right database and dbt target, defaults to dev, and rejects unknown values |
 | `tests/test_environments.py` | `make dev` / `make prod` each use their own workspace (location name), port, and Dagster home |
 | `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, or an empty load rolls back and never commits |
@@ -355,6 +356,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 | `stg_pbp` | `staging/stg_pbp` | Real plays only (`play_type in ('pass', 'run')`), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
 | `stg_schedules` | `staging/stg_schedules` | Game results and betting lines, plus `is_played` |
 | `stg_teams` | `staging/stg_teams` | Team lookup |
+| `stg_fourth_downs` | `staging/stg_fourth_downs` | One row per fourth-down decision: went for it (pass or run, fakes included) or kicked (punt or field goal). Penalties, kneels, and spikes left out. Separate from `stg_pbp`, which keeps only pass and run plays |
 
 ### Marts: `NFL.MARTS` (dbt tables, regular season only)
 
@@ -363,6 +365,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 | `team_season_epa` | `marts/team_season_epa` | team × season | Offensive and defensive EPA per play, success rates, net EPA |
 | `qb_season_epa` | `marts/qb_season_epa` | passer × season | Dropbacks, EPA per dropback, success rate, scrambles (minimum 200 dropbacks) |
 | `game_results_vs_spread` | `marts/game_results_vs_spread` | game | Final margin vs. the spread, and who covered (home, away, push) |
+| `team_fourth_down` | `marts/team_fourth_down` | team × season | Fourth-and-short (≤ 2 yards) in competitive game states (win probability 10–90%): go-for-it rate and conversion rate |
 
 **EPA (Expected Points Added)** measures how much a play changed a team's expected points. It's the standard way to measure efficiency in NFL analytics. **Success rate** is the share of plays with EPA above zero. **Net EPA** is offensive EPA per play minus EPA allowed per play.
 
@@ -390,6 +393,8 @@ From the 2025 regular season:
 
 Across every game played since 2015, home teams covered the spread in 47.7% of games, away teams in 49.7%, and 2.6% were pushes.
 
+**The fourth-down revolution** (`team_fourth_down`): on fourth-and-short in competitive games, teams went for it **26.8%** of the time in 2015 and **61.8%** in 2025. The 2025 leaders were Indianapolis (84.2%, converting 62.5%), Buffalo (82.4%, converting only 42.9%, mostly on passes: 2 of 8), and Dallas (76.5%, converting 76.9%).
+
 The 2025 numbers above are identical on DuckDB and Snowflake, which is how the migration was verified. (2015 was added after the migration, by extending the season partitions back one year.)
 
 ---
@@ -407,7 +412,7 @@ The 2025 numbers above are identical on DuckDB and Snowflake, which is how the m
 | **Asset checks** (partitioned, blocking) | `checks.py`: `raw_pbp_unique_plays`, `raw_schedules_scores_present` | The check's results per season |
 | **Checks-only job** | `raw_data_checks` in `definitions.py` | **Jobs → raw_data_checks** (see the exercise below for why it exists) |
 | **dbt integration** | `assets/dbt.py`: `nfl_dbt_models`; `sources.yml` maps sources to `raw_*` | dbt models appear as `staging/*` and `marts/*` assets, linked to `raw_*` |
-| **dbt tests as asset checks** | `unique`, `not_null`, `accepted_values` in the model `.yml` files | 18 checks on the dbt assets |
+| **dbt tests as asset checks** | `unique`, `not_null`, `accepted_values` in the model `.yml` files, plus a singular test in `dbt_project/tests/` | 26 checks on the dbt assets |
 | **Asset groups** | `group_name="raw"`; `+meta: dagster: group:` in `dbt_project.yml` | Assets grouped as raw, staging, marts |
 | **Jobs** | `current_season_refresh` (`raw_pbp` + `raw_schedules` and their checks) in `definitions.py` | **Jobs → current_season_refresh** |
 | **Schedules** | `current_season_schedule`: `0 10 * * 2,5` (Tue and Fri 10:00 Pacific), partition = current season | The job page's top bar; **Automation** |

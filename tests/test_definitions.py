@@ -16,9 +16,11 @@ DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
     "staging/stg_teams",
+    "staging/stg_fourth_downs",
     "marts/team_season_epa",
     "marts/qb_season_epa",
     "marts/game_results_vs_spread",
+    "marts/team_fourth_down",
 }
 
 
@@ -39,8 +41,10 @@ def test_checks(asset_graph):
     checks = asset_graph.asset_check_keys
     raw_checks = {c.name for c in checks if c.asset_key.to_user_string() in RAW_ASSETS}
     assert raw_checks == {"raw_pbp_unique_plays", "raw_schedules_scores_present"}
-    # The rest are dbt tests, which dagster-dbt turns into asset checks.
-    assert len(checks) == 20
+    # The rest are dbt tests (schema tests and singular tests in dbt_project/tests/),
+    # which dagster-dbt turns into asset checks.
+    assert len(checks) == 28
+    assert any(c.name == "assert_team_fourth_down_counts_consistent" for c in checks)
 
 
 @pytest.mark.parametrize(
@@ -53,6 +57,8 @@ def test_checks(asset_graph):
         ("marts/team_season_epa", {"staging/stg_pbp", "staging/stg_teams"}),
         ("marts/qb_season_epa", {"staging/stg_pbp"}),
         ("marts/game_results_vs_spread", {"staging/stg_schedules"}),
+        ("staging/stg_fourth_downs", {"raw_pbp"}),
+        ("marts/team_fourth_down", {"staging/stg_fourth_downs", "staging/stg_teams"}),
     ],
 )
 def test_lineage(asset_graph, asset, upstream):
