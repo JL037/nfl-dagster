@@ -2,19 +2,45 @@
 
 This is the standard lake -> warehouse load. The Parquet file stays the source of truth,
 and the Snowflake table can always be rebuilt from it.
+
+Loads follow write-audit-publish: the new rows are written and audited inside one
+transaction, and only committed (published) if every audit passes. Otherwise the
+transaction rolls back and the table keeps its previous data.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
 
 STAGE = "RAW.RAW_STAGE"
 FILE_FORMAT = "RAW.RAW_PARQUET"
 
 
-def load_parquet(conn, path: Path, table: str, season: int | None = None) -> int:
+class AuditFailed(Exception):
+    """Raised when a load's audits find problems. Nothing was committed."""
+
+    def __init__(self, table: str, results: Mapping[str, int]):
+        self.table = table
+        self.results = dict(results)
+        failed = {name: n for name, n in results.items() if name != "rows_loaded" and n}
+        super().__init__(f"RAW.{table} audits failed, load rolled back: {failed}")
+
+
+def load_parquet(
+    conn,
+    path: Path,
+    table: str,
+    season: int | None = None,
+    expected_rows: int | None = None,
+    audits: Mapping[str, str] | None = None,
+) -> dict[str, int]:
     """Replace one season of `table` (or the whole table if season is None) with `path`.
 
-    Returns the number of rows loaded. Safe to re-run: it deletes before it copies, inside
-    one transaction, so a failed load leaves the previous data in place.
+    `audits` maps a name to a SQL query that returns one number: how many rows are bad.
+    Queries for a season get it as their only bind parameter (%s). They run after the copy,
+    inside the transaction, so they see the new rows before anyone else can.
+
+    Returns rows_loaded plus every audit's result. Raises AuditFailed (after rolling back)
+    if any audit finds bad rows or rows_loaded != expected_rows.
     """
     folder = table.lower()
     staged_file = f"@{STAGE}/{folder}/{path.name}"
@@ -48,6 +74,7 @@ def load_parquet(conn, path: Path, table: str, season: int | None = None) -> int
 
     cur.execute("begin")
     try:
+        # Write.
         if season is None:
             cur.execute(f"delete from RAW.{table}")
         else:
@@ -66,8 +93,22 @@ def load_parquet(conn, path: Path, table: str, season: int | None = None) -> int
             """
         )
         rows_loaded = sum(row[3] for row in cur.fetchall())  # columns: file, status, rows_parsed, rows_loaded, ...
+
+        # Audit, before anything is visible outside this transaction.
+        results = {"rows_loaded": rows_loaded}
+        if expected_rows is not None:
+            results["missing_or_extra_rows"] = abs(rows_loaded - expected_rows)
+        for name, sql in (audits or {}).items():
+            params = (season,) if season is not None else None
+            results[name] = cur.execute(sql, params).fetchone()[0]
+
+        bad = {name: n for name, n in results.items() if name != "rows_loaded" and n}
+        if bad or rows_loaded == 0:
+            raise AuditFailed(table, results)
+
+        # Publish.
         cur.execute("commit")
     except Exception:
         cur.execute("rollback")
         raise
-    return rows_loaded
+    return results

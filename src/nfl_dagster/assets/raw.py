@@ -6,7 +6,7 @@ from tabulate import tabulate
 
 from nfl_dagster.partitions import season_partitions
 from nfl_dagster.resources import REPO_ROOT
-from nfl_dagster.snowflake_load import load_parquet
+from nfl_dagster.snowflake_load import AuditFailed, load_parquet
 
 RAW_DIR = REPO_ROOT / "data" / "raw"
 
@@ -33,20 +33,46 @@ def parquet_metadata(df: pl.DataFrame, path, preview_columns: list[str] | None =
     }
 
 
+# Audits run inside the load transaction, before the new rows are committed (see
+# snowflake_load.py). Each query counts bad rows in the season just loaded; any non-zero
+# count rolls the load back. The asset checks in checks.py test the same rules, but after
+# the fact, as the per-season report in the UI.
+AUDITS = {
+    "PBP": {
+        "duplicate_plays": (
+            "select count(*) - count(distinct game_id, play_id) from RAW.PBP where season = %s"
+        ),
+    },
+    "SCHEDULES": {
+        "mismatched_scores": (
+            "select count_if((home_score is null) <> (away_score is null))"
+            " from RAW.SCHEDULES where season = %s"
+        ),
+    },
+}
+
+
 def load_to_snowflake(snowflake: SnowflakeResource, df: pl.DataFrame, path, table: str,
                       season: int | None = None) -> dict:
-    """Load the Parquet file into RAW.<table> and return metadata about the load.
+    """Load the Parquet file into RAW.<table> (write-audit-publish) and return metadata.
 
-    Raises if Snowflake loaded a different number of rows than the file has, so a silent
-    partial load fails the run instead of showing up later as wrong numbers.
+    If an audit fails, the load is rolled back, so Snowflake keeps its previous data, and
+    the asset raises. A failed asset records no materialization, so automation downstream
+    never sees an "update" to react to.
     """
     with snowflake.get_connection() as conn:
-        rows_loaded = load_parquet(conn, path, table, season)
-    if rows_loaded != df.height:
-        raise dg.Failure(f"RAW.{table}: loaded {rows_loaded} rows, expected {df.height}")
+        try:
+            results = load_parquet(
+                conn, path, table, season, expected_rows=df.height, audits=AUDITS.get(table)
+            )
+        except AuditFailed as e:
+            raise dg.Failure(
+                description=str(e),
+                metadata={name: dg.MetadataValue.int(n) for name, n in e.results.items()},
+            ) from e
     return {
         "snowflake_table": dg.MetadataValue.text(f"NFL.RAW.{table}"),
-        "rows_loaded": dg.MetadataValue.int(rows_loaded),
+        **{name: dg.MetadataValue.int(n) for name, n in results.items()},
     }
 
 
