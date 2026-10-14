@@ -119,6 +119,7 @@ Dagster runs locally. The only cloud account needed is Snowflake (a free trial i
 nfl-dagster/
 ├── pyproject.toml              # Package metadata, dependencies, Dagster module config
 ├── Makefile                    # make dev / prod / clone-dev / validate / test
+├── workspaces/                 # One per environment: code location name nfl_dagster_dev / _prod
 ├── .env.example                # Template for .env (Snowflake credentials; .env is gitignored)
 ├── .github/workflows/ci.yml    # CI on every pull request: install, dbt parse, validate, tests
 ├── scripts/
@@ -146,7 +147,8 @@ nfl-dagster/
 ├── tests/                      # No Snowflake needed; runs in CI
 │   ├── test_definitions.py     # Assets, checks, lineage, automation, job, schedule
 │   ├── test_resources.py       # NFL_ENV → database and dbt target
-│   └── test_snowflake_load.py  # Write-audit-publish with a fake connection
+│   ├── test_snowflake_load.py  # Write-audit-publish with a fake connection
+│   └── test_environments.py    # make dev/prod pair with the right workspace, port, and home
 └── data/                       # Created at runtime; not committed
     └── raw/
         ├── pbp/season=YYYY.parquet
@@ -241,10 +243,14 @@ The project separates **code** environments (git branches) from **data** environ
 | Snowflake database | `NFL_DEV` | `NFL` |
 | dbt target | `dev` | `prod` |
 | Dagster home (run history) | `.dagster_home/dev` | `.dagster_home/prod` |
+| Code location name (shown on every UI page) | `nfl_dagster_dev` | `nfl_dagster_prod` |
+| UI address | <http://localhost:3000> | <http://localhost:3001> |
 | Start it | `make dev` | `make prod` (only from `main`) |
 | Used for | Feature branches, experiments, breaking things on purpose | Code that has been merged to `main` |
 
 **How the environment is chosen.** One variable, `NFL_ENV` (`dev` or `prod`), picks the database for Dagster's Snowflake resource and the dbt target; `make dev` / `make prod` set it along with a matching `DAGSTER_HOME`, so dev and prod run history never mix. If `NFL_ENV` isn't set, it defaults to **dev**, so production is only ever used on purpose. `NFL_ENV` is deliberately **not** in `.env`: Dagster's `.env` loading overrides the shell, so a value there would silently win over what you type. `.env` holds credentials only.
+
+**Always know which one you're in.** Each environment loads its own workspace file ([`workspaces/dev.yaml`](workspaces/dev.yaml), [`workspaces/prod.yaml`](workspaces/prod.yaml)), so the code location name, shown in the job header ("Job in nfl_dagster_prod"), the asset catalog, and every run, says which warehouse a button will write to. The port tells you too, and lets dev and prod run side by side. `tests/test_environments.py` fails if a `make` target ever pairs an environment with the wrong workspace, port, or Dagster home.
 
 **A dev database in seconds.** `NFL_DEV` is a Snowflake **zero-copy clone** of `NFL`:
 
@@ -272,7 +278,7 @@ The clone is instant and shares storage with production until either side change
 make dev           # against NFL_DEV; use `make prod` (from main) for production
 ```
 
-Then open <http://localhost:3000>.
+Then open <http://localhost:3000> for dev, or <http://localhost:3001> for prod. Check the code location name (`nfl_dagster_dev` / `nfl_dagster_prod`) on any job or asset page before launching runs.
 
 ### First run
 
@@ -325,6 +331,7 @@ The suite needs no Snowflake connection, so it runs in CI on every pull request:
 | --- | --- |
 | `tests/test_definitions.py` | The 9 assets and 20 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
 | `tests/test_resources.py` | `NFL_ENV` maps to the right database and dbt target, defaults to dev, and rejects unknown values |
+| `tests/test_environments.py` | `make dev` / `make prod` each use their own workspace (location name), port, and Dagster home |
 | `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, or an empty load rolls back and never commits |
 
 ---
@@ -499,6 +506,12 @@ Check the role selector in the worksheet: it should be `NFL_ROLE`.
 
 **Private key file not found**
 Use an absolute path in `SNOWFLAKE_PRIVATE_KEY_PATH`; `~` isn't expanded.
+
+**Which environment is this UI?**
+Look at the code location name on any job or asset page (`nfl_dagster_dev` or `nfl_dagster_prod`), or the port (3000 dev, 3001 prod). The authoritative value is the `snowflake` resource's `database` under **Deployment → (location) → Resources**.
+
+**The automation sensor or schedule is off after a rename**
+Dagster stores on/off state per code location name. If the location name changes, turn the sensor and schedule back on under **Automation**.
 
 **The asset graph looks stale after a code change**
 Reload the code location from the **Deployment** page, then hard-refresh the browser. If it's still stale, clear site data for `localhost:3000`.
