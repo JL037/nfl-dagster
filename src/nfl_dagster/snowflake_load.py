@@ -8,7 +8,7 @@ transaction, and only committed (published) if every audit passes. Otherwise the
 transaction rolls back and the table keeps its previous data.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 
 STAGE = "RAW.RAW_STAGE"
@@ -18,11 +18,40 @@ FILE_FORMAT = "RAW.RAW_PARQUET"
 class AuditFailed(Exception):
     """Raised when a load's audits find problems. Nothing was committed."""
 
-    def __init__(self, table: str, results: Mapping[str, int]):
+    def __init__(self, table: str, results: Mapping[str, int], details: str = ""):
         self.table = table
         self.results = dict(results)
         failed = {name: n for name, n in results.items() if name != "rows_loaded" and n}
-        super().__init__(f"RAW.{table} audits failed, load rolled back: {failed}")
+        message = f"RAW.{table} audits failed, load rolled back: {failed}"
+        super().__init__(f"{message}. {details}" if details else message)
+
+
+def column_differences(conn, table: str, file_columns: Collection[str]) -> dict[str, list[str]]:
+    """Columns in the file but not the table, and in the table but not the file.
+
+    Why this audit exists: COPY INTO with MATCH_BY_COLUMN_NAME never complains about a
+    column mismatch. A column the table doesn't have is silently dropped, and a table column
+    the file doesn't have is silently filled with NULL. The COPY still reports LOADED with
+    zero errors and the right row count, so no other audit notices. If nflverse renamed
+    passer_id, every new season would load with passer_id NULL and every QB mart would
+    quietly lose those plays.
+
+    The table's columns were fixed by the first file ever loaded (INFER_SCHEMA below), and
+    IGNORE_CASE made them uppercase, so compare in uppercase.
+    """
+    table_columns = {
+        row[0]
+        for row in conn.cursor().execute(
+            "select column_name from information_schema.columns"
+            " where table_schema = 'RAW' and table_name = %s",
+            (table,),
+        ).fetchall()
+    }
+    file_columns = {c.upper() for c in file_columns}
+    return {
+        "columns_not_in_table": sorted(file_columns - table_columns),
+        "columns_not_in_file": sorted(table_columns - file_columns),
+    }
 
 
 def load_parquet(
@@ -32,6 +61,7 @@ def load_parquet(
     season: int | None = None,
     expected_rows: int | None = None,
     audits: Mapping[str, str] | None = None,
+    expected_columns: Collection[str] | None = None,
 ) -> dict[str, int]:
     """Replace one season of `table` (or the whole table if season is None) with `path`.
 
@@ -39,8 +69,11 @@ def load_parquet(
     Queries for a season get it as their only bind parameter (%s). They run after the copy,
     inside the transaction, so they see the new rows before anyone else can.
 
+    `expected_columns` is the file's column names. If given, the table must have exactly
+    those columns (see column_differences for why).
+
     Returns rows_loaded plus every audit's result. Raises AuditFailed (after rolling back)
-    if any audit finds bad rows or rows_loaded != expected_rows.
+    if any audit finds bad rows, rows_loaded != expected_rows, or the columns differ.
     """
     folder = table.lower()
     staged_file = f"@{STAGE}/{folder}/{path.name}"
@@ -96,15 +129,21 @@ def load_parquet(
 
         # Audit, before anything is visible outside this transaction.
         results = {"rows_loaded": rows_loaded}
+        details = ""
         if expected_rows is not None:
             results["missing_or_extra_rows"] = abs(rows_loaded - expected_rows)
+        if expected_columns is not None:
+            differences = column_differences(conn, table, expected_columns)
+            results.update({name: len(columns) for name, columns in differences.items()})
+            # The counts go into Dagster metadata; the names are what you need to fix it.
+            details = "; ".join(f"{name}: {cols}" for name, cols in differences.items() if cols)
         for name, sql in (audits or {}).items():
             params = (season,) if season is not None else None
             results[name] = cur.execute(sql, params).fetchone()[0]
 
         bad = {name: n for name, n in results.items() if name != "rows_loaded" and n}
         if bad or rows_loaded == 0:
-            raise AuditFailed(table, results)
+            raise AuditFailed(table, results, details)
 
         # Publish.
         cur.execute("commit")

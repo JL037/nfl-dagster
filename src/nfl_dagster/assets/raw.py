@@ -63,7 +63,14 @@ def load_to_snowflake(snowflake: SnowflakeResource, df: pl.DataFrame, path, tabl
     with snowflake.get_connection() as conn:
         try:
             results = load_parquet(
-                conn, path, table, season, expected_rows=df.height, audits=AUDITS.get(table)
+                conn,
+                path,
+                table,
+                season,
+                expected_rows=df.height,
+                audits=AUDITS.get(table),
+                # The table must have exactly the file's columns, or the load rolls back.
+                expected_columns=df.columns,
             )
         except AuditFailed as e:
             raise dg.Failure(

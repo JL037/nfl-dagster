@@ -12,10 +12,16 @@ import pytest
 from nfl_dagster.snowflake_load import AuditFailed, load_parquet
 
 
+# The columns RAW.PBP has in the fake warehouse, as Snowflake stores them (uppercase).
+TABLE_COLUMNS = ["SEASON", "GAME_ID", "PLAY_ID", "PASSER_ID"]
+
+
 class FakeCursor:
-    def __init__(self, rows_loaded: int, audit_results: dict[str, int]):
+    def __init__(self, rows_loaded: int, audit_results: dict[str, int],
+                 table_columns: list[str] = TABLE_COLUMNS):
         self.rows_loaded = rows_loaded
         self.audit_results = audit_results
+        self.table_columns = table_columns
         self.statements: list[str] = []
         self._result = None
 
@@ -25,6 +31,8 @@ class FakeCursor:
         if sql.startswith("copy into"):
             # COPY INTO returns one row per file: file, status, rows_parsed, rows_loaded, ...
             self._result = [("season=2025.parquet", "LOADED", self.rows_loaded, self.rows_loaded)]
+        elif "information_schema.columns" in sql:
+            self._result = [(c,) for c in self.table_columns]
         else:
             name = next((n for n in self.audit_results if f"-- {n}" in sql), None)
             self._result = [(self.audit_results[name],)] if name else []
@@ -49,7 +57,8 @@ class FakeConnection:
 AUDITS = {"duplicate_plays": "select 1 -- duplicate_plays"}
 
 
-def run_load(rows_loaded: int, duplicate_plays: int, expected_rows: int = 100):
+def run_load(rows_loaded: int, duplicate_plays: int, expected_rows: int = 100,
+             expected_columns: list[str] | None = None):
     cursor = FakeCursor(rows_loaded, {"duplicate_plays": duplicate_plays})
     try:
         result = load_parquet(
@@ -59,6 +68,7 @@ def run_load(rows_loaded: int, duplicate_plays: int, expected_rows: int = 100):
             season=2025,
             expected_rows=expected_rows,
             audits=AUDITS,
+            expected_columns=expected_columns,
         )
     except AuditFailed as e:
         return cursor.statements, e
@@ -102,3 +112,75 @@ def test_delete_is_scoped_to_the_season():
     statements, _ = run_load(rows_loaded=100, duplicate_plays=0)
     delete = statements[position(statements, "delete")]
     assert delete == "delete from raw.pbp where season = %s"
+
+
+# Column checks. In real Snowflake, a COPY with MATCH_BY_COLUMN_NAME succeeds when the columns
+# don't match: extra file columns are dropped and missing ones load as NULL (tried on a
+# temporary table: status LOADED, 0 errors). So the load has to compare columns itself.
+# The file's names are lowercase (nflverse); the table's are uppercase.
+FILE_COLUMNS = ["season", "game_id", "play_id", "passer_id"]
+
+
+def test_matching_columns_commit():
+    statements, result = run_load(rows_loaded=100, duplicate_plays=0, expected_columns=FILE_COLUMNS)
+    assert result["columns_not_in_table"] == 0
+    assert result["columns_not_in_file"] == 0
+    assert "commit" in statements
+
+
+def test_new_column_in_file_rolls_back():
+    """nflverse adds a column: Snowflake would silently drop it on every load."""
+    statements, error = run_load(
+        rows_loaded=100, duplicate_plays=0, expected_columns=FILE_COLUMNS + ["new_stat"]
+    )
+    assert isinstance(error, AuditFailed)
+    assert error.results["columns_not_in_table"] == 1
+    assert "NEW_STAT" in str(error)
+    assert "commit" not in statements
+
+
+def test_renamed_column_rolls_back():
+    """nflverse renames passer_id: Snowflake would load passer_id as NULL and drop the new name."""
+    renamed = ["season", "game_id", "play_id", "passer_player_id"]
+    statements, error = run_load(rows_loaded=100, duplicate_plays=0, expected_columns=renamed)
+    assert isinstance(error, AuditFailed)
+    assert error.results == {
+        "rows_loaded": 100,
+        "missing_or_extra_rows": 0,  # the row count looks fine, so only this audit catches it
+        "duplicate_plays": 0,
+        "columns_not_in_table": 1,
+        "columns_not_in_file": 1,
+    }
+    assert "PASSER_PLAYER_ID" in str(error) and "PASSER_ID" in str(error)
+    assert "commit" not in statements
+
+
+def test_column_check_runs_before_commit():
+    statements, _ = run_load(rows_loaded=100, duplicate_plays=0, expected_columns=FILE_COLUMNS)
+    check = next(i for i, s in enumerate(statements) if "information_schema.columns" in s)
+    assert position(statements, "copy into") < check < position(statements, "commit")
+
+
+def test_raw_assets_pass_their_columns(monkeypatch):
+    """The audit only runs if the caller passes expected_columns, so check that raw.py does."""
+    from contextlib import contextmanager
+
+    import polars as pl
+
+    from nfl_dagster.assets import raw
+
+    calls = {}
+
+    def fake_load_parquet(conn, path, table, season=None, **kwargs):
+        calls.update(kwargs)
+        return {"rows_loaded": 1}
+
+    class FakeSnowflake:
+        @contextmanager
+        def get_connection(self):
+            yield None
+
+    monkeypatch.setattr(raw, "load_parquet", fake_load_parquet)
+    df = pl.DataFrame({"season": [2025], "game_id": ["g"]})
+    raw.load_to_snowflake(FakeSnowflake(), df, Path("season=2025.parquet"), "PBP", 2025)
+    assert calls["expected_columns"] == ["season", "game_id"]

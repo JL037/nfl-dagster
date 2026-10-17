@@ -365,10 +365,12 @@ The suite needs no Snowflake connection, so it runs in CI on every pull request:
 
 | File | What it proves |
 | --- | --- |
-| `tests/test_definitions.py` | The 11 assets and 28 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
+| `tests/test_definitions.py` | The 11 assets and 29 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
 | `tests/test_resources.py` | `NFL_ENV` maps to the right database and dbt target, defaults to dev, and rejects unknown values |
 | `tests/test_environments.py` | `make dev` / `make prod` each use their own workspace (location name), port, and Dagster home |
-| `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, or an empty load rolls back and never commits |
+| `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, an empty load, or a column added or renamed at the source rolls back and never commits; the raw assets pass their columns to the load |
+
+The dbt project has two kinds of tests. **Data tests** (`unique`, `not_null`, `accepted_values`, and the singular tests in `dbt_project/tests/`) check the real data, and Dagster shows each one as an asset check. **Unit tests** (`unit_tests:` in `stg_pbp.yml` and `marts.yml`) run a model's SQL on a few hand-written rows and compare the output with what's expected, so they test the logic, including cases the real data doesn't have yet, like a game with no betting line. Both kinds run in Snowflake as part of `dbt build` (unit tests first, before the model is rebuilt), so they run whenever Dagster rebuilds the models, but not in CI, which never connects to Snowflake. To run just the unit tests in dev: `cd dbt_project && dbt test --select test_type:unit`.
 
 ---
 
@@ -388,7 +390,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 
 | Model | Dagster asset | Description |
 | --- | --- | --- |
-| `stg_pbp` | `staging/stg_pbp` | Real plays only (`play_type in ('pass', 'run')`), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
+| `stg_pbp` | `staging/stg_pbp` | Real plays from scrimmage only (`play_type in ('pass', 'run')`, two-point tries left out), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
 | `stg_schedules` | `staging/stg_schedules` | Game results and betting lines, plus `is_played` |
 | `stg_teams` | `staging/stg_teams` | Team lookup |
 | `stg_fourth_downs` | `staging/stg_fourth_downs` | One row per fourth-down decision: went for it (pass or run, fakes included) or kicked (punt or field goal). Penalties, kneels, and spikes left out. Separate from `stg_pbp`, which keeps only pass and run plays |
@@ -410,7 +412,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/qb_epa_2025-dark.png">
-  <img alt="Bar chart of the top 10 quarterbacks by EPA per dropback in 2025, led by Drake Maye at 0.318." src="docs/images/qb_epa_2025-light.png">
+  <img alt="Bar chart of the top 10 quarterbacks by EPA per dropback in 2025, led by Drake Maye at 0.316." src="docs/images/qb_epa_2025-light.png">
 </picture>
 
 Charts are drawn from the marts by [`scripts/make_charts.py`](scripts/make_charts.py) (`NFL_ENV=prod python scripts/make_charts.py`), in light and dark versions.
@@ -419,25 +421,25 @@ From the 2025 regular season:
 
 | Team | Off. EPA/play | Def. EPA/play | Net |
 | --- | --- | --- | --- |
-| NE | 0.159 | -0.047 | 0.206 |
-| LA | 0.145 | -0.061 | 0.206 |
-| BUF | 0.136 | -0.016 | 0.152 |
-| SEA | 0.033 | -0.116 | 0.149 |
-| DEN | 0.050 | -0.088 | 0.138 |
+| LA | 0.145 | -0.062 | 0.207 |
+| NE | 0.157 | -0.046 | 0.203 |
+| BUF | 0.141 | -0.015 | 0.156 |
+| SEA | 0.030 | -0.118 | 0.147 |
+| JAX | 0.033 | -0.104 | 0.138 |
 
 | QB | Team | Dropbacks | EPA/dropback | Success rate |
 | --- | --- | --- | --- | --- |
-| D.Maye | NE | 602 | 0.318 | 0.553 |
-| J.Love | GB | 485 | 0.262 | 0.505 |
+| D.Maye | NE | 601 | 0.316 | 0.552 |
+| J.Love | GB | 483 | 0.259 | 0.503 |
 | M.Stafford | LA | 624 | 0.223 | 0.527 |
-| B.Purdy | SF | 316 | 0.202 | 0.532 |
+| B.Purdy | SF | 313 | 0.206 | 0.534 |
 | J.Goff | DET | 619 | 0.177 | 0.486 |
 
 Across every game played since 2015, home teams covered the spread in 47.7% of games, away teams in 49.7%, and 2.6% were pushes.
 
 **The fourth-down revolution** (`team_fourth_down`): on fourth-and-short in competitive games, teams went for it **26.8%** of the time in 2015 and **61.8%** in 2025. The 2025 leaders were Indianapolis (84.2%, converting 62.5%), Buffalo (82.4%, converting only 42.9%, mostly on passes: 2 of 8), and Dallas (76.5%, converting 76.9%).
 
-The 2025 numbers above are identical on DuckDB and Snowflake, which is how the migration was verified. (2015 was added after the migration, by extending the season partitions back one year.)
+The migration from DuckDB was verified by getting identical 2025 numbers on both. (2015 was added after the migration, by extending the season partitions back one year.) The EPA numbers above have changed slightly since then, on purpose: two-point tries are no longer counted as plays (see [Design decisions](#design-decisions)). Before that change, Maye's 2025 EPA per dropback was 0.318, and NE led the net EPA table.
 
 ---
 
@@ -480,6 +482,7 @@ Each of these was run against the pipeline while building it: change or break so
 5. **Watch automation work.** Turn on `default_automation_condition_sensor` (**Automation**), then refresh 2026 from **Jobs → current_season_refresh → Materialize all…**. Within about 30 seconds, a run you didn't launch rebuilds `stg_pbp`, `stg_schedules`, and the marts built on them. `stg_teams` stays put, because `raw_teams` didn't change.
 6. **Watch automation refuse to run.** Add a season that hasn't been loaded (e.g. change `FIRST_SEASON` to one year earlier), then refresh 2026 again. Nothing rebuilds: the dbt asset's **Automation** tab shows `any_deps_missing` true. Load the new season and automation catches up on its own, because `SINCE (handled)` remembered the pending update.
 7. **Try to sneak bad data through.** In `raw_pbp`, temporarily add a duplicated pass play (`df = pl.concat([df, df.filter(pl.col("play_type") == "pass").head(1)])`) and refresh 2026. The load's audit finds the duplicate and rolls back: the `raw_pbp` step fails, `RAW.PBP` keeps its previous rows, no materialization is recorded, and automation never rebuilds the pbp marts. (The first version of this project relied only on the automation gate, and lost a race to it: see the [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).)
+8. **Rename a column at the source.** In `raw_teams`, temporarily rename a column as if nflverse had changed it (`df = nfl.load_teams().rename({"team_color": "team_colour"})`) and materialize `raw_teams`. The step fails with `columns_not_in_table: ['TEAM_COLOUR']; columns_not_in_file: ['TEAM_COLOR']`, and `RAW.TEAMS` keeps its 36 rows with `team_color` filled in. Without this audit, the same load succeeds and `team_color` becomes `NULL`. Undo the rename and materialize again, which also rewrites `data/raw/teams.parquet`.
 
 ---
 
@@ -489,7 +492,7 @@ Each of these was run against the pipeline while building it: change or break so
 
 **Idempotent loads, one season at a time.** `snowflake_load.load_parquet()` deletes the season's rows and runs `COPY INTO` inside one transaction. Running a partition once or five times gives the same table, which is what makes backfills, retries, and fixes safe.
 
-**Write-audit-publish.** (Full story: [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).) Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file. If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
+**Write-audit-publish.** (Full story: [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).) Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file, and the table's columns equal to the file's (see below). If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
 
 **Schedule the source, automate the rest.** Only the raw refresh has a schedule. The dbt models use declarative automation (`eager`), so they rebuild after their inputs change, never while an input is missing or in progress, and only the models downstream of what changed. There's no second schedule to keep in sync.
 
@@ -501,6 +504,10 @@ Each of these was run against the pipeline while building it: change or break so
 
 **Schema drift measured, then pinned.** Across the 2016–2026 seasons, only one column changes type: `goal_to_go` is an integer in 7 seasons and a float in 4. `raw_pbp` casts it to a float before writing, so every season's file matches the table.
 
+**A column change fails the load instead of loading quietly.** Matching by name has a blind spot: when the file's columns differ from the table's, `COPY INTO` still succeeds. A column the table doesn't have is dropped, and a table column the file doesn't have is filled with `NULL`. I tried it on a temporary table, with a file where `passer_id` was renamed `passer_player_id` and a new column added. The COPY reported `LOADED`, 0 errors, and the right row count, and `passer_id` came back `NULL` on every row. Every audit that existed then would have passed, and the QB marts would have quietly lost each new season's dropbacks. So the load now compares the file's columns with the table's (`information_schema.columns`) inside the transaction, and rolls back if they differ, naming the columns (`columns_not_in_table: ['PASSER_PLAYER_ID']; columns_not_in_file: ['PASSER_ID']`).
+
+Snowflake can instead add new columns on its own (`ENABLE_SCHEMA_EVOLUTION = TRUE` on the table). I didn't use it, because it handles only half the problem: a renamed column would arrive as a new column while the old one went `NULL`, and nothing would fail. A column change in a source is something a person should look at once (see [Troubleshooting](#troubleshooting)), not something to absorb silently.
+
 **Least-privilege access with key-pair auth.** The pipeline runs as `NFL_SVC`, a service user that can't log in with a password, under `NFL_ROLE`, which owns only the `NFL` database. No secret is in the repo: every setting comes from environment variables, and the private key lives outside the project.
 
 **Checks query the warehouse.** The raw checks run against Snowflake, not the local files, so they check what dbt will actually read.
@@ -510,6 +517,8 @@ Each of these was run against the pipeline while building it: change or break so
 **Regular season only in the marts.** Only 12–14 teams play in the postseason, so including it would weigh some teams' numbers toward playoff opponents.
 
 **Single-column keys in the marts** (`team_season_key`, `qb_season_key`), so plain dbt `unique` tests work without extra packages.
+
+**Two-point tries aren't plays.** nflverse logs a two-point try as a pass or run, so it used to count toward EPA per play and per dropback (1,410 tries since 2015). It's left out of `stg_pbp` now, because it isn't a down: it's an untimed, all-or-nothing snap from the 2 after a touchdown, and teams that score more touchdowns get more of them. Official passing stats leave them out for the same reason. It's a definition choice, not a bug fix, so I measured it before deciding: a QB's EPA per dropback moved by 0.002 at the median and 0.018 at most, a few close QBs swapped places, and one QB-season (Beathard 2018, exactly 200 dropbacks) fell below the cutoff. Small, but the contract-value mart will rank close QBs against each other, so a play has to mean the same thing for everyone. A dbt unit test (`keeps_scrimmage_plays_only`) keeps the rule in place.
 
 **QB stats grouped by `passer_id`, not name.** Abbreviated names like `J.Daniels` belong to several players. `passer` / `passer_id` also include scrambles, which `passer_player_name` doesn't.
 
@@ -586,6 +595,12 @@ Reload the code location from the **Deployment** page, then hard-refresh the bro
 
 **The catalog shows only old assets, with code location "–"**
 The code server stopped (for example after the computer slept). Reload from **Deployment**, or restart `dagster dev`. Assets with "–" can also be leftovers from renamed assets; they only have history, not code.
+
+**A load fails with `columns_not_in_table` or `columns_not_in_file`**
+nflverse changed the columns of a dataset, and the load rolled back, so Snowflake still has the previous data. The error lists the columns. Decide what the change means, then fix the table in dev first:
+- A new column you want: `alter table nfl_dev.raw.pbp add column new_stat float;` (check the type in the Parquet file first), then rerun.
+- A renamed column: `alter table nfl_dev.raw.pbp rename column passer_id to passer_player_id;`, update the dbt staging model that reads it, then rerun.
+- A removed column: drop it from the table (`alter table ... drop column ...`) and from any model that reads it.
 
 **Run history disappears after restarting `dagster dev`**
 Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagster_home/dev` or `.dagster_home/prod`. Plain `dagster dev` without it uses a temporary folder.
