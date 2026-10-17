@@ -1,0 +1,26 @@
+id: no-hardcoded-nfl-database
+language: Python
+severity: error
+message: Hard-coded NFL / NFL_DEV database name; use SNOWFLAKE_DATABASE from nfl_dagster.resources, which NFL_ENV chooses.
+note: |
+  NFL_ENV picks the warehouse environment (dev -> NFL_DEV, prod -> NFL) in one place,
+  src/nfl_dagster/resources.py. A database name typed anywhere else is wrong in the
+  other environment: a dev run would read or write production, or report the wrong
+  table. raw.py once labeled every load "NFL.RAW.<table>", even loads into NFL_DEV.
+
+  Fix: `from nfl_dagster.resources import SNOWFLAKE_DATABASE`, then
+  `f"{SNOWFLAKE_DATABASE}.RAW.{table}"`. Unqualified names (`RAW.PBP`) are fine: the
+  connection's database is already the right one.
+
+  Allowed: resources.py (the mapping itself), scripts/clone_dev.py (it clones NFL into
+  NFL_DEV by design), tests, and docstrings.
+ignores:
+  - src/nfl_dagster/resources.py
+  - scripts/clone_dev.py
+  - tests/**
+rule:
+  kind: string
+  regex: "\\bNFL_DEV\\b|\\bNFL\\.(RAW|STAGING|MARTS)\\b|^[rRbBfFuU]*[\"']NFL[\"']$"
+  not:
+    inside:
+      kind: expression_statement

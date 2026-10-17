@@ -1,0 +1,44 @@
+name: Taskless
+
+# Runs the code rules in .taskless/rules/ (ast-grep rules over Python; see the README's
+# "Code rules" section). Separate from ci.yml on purpose: that workflow is the Python/dbt
+# pipeline, this one is static rules, and either can change without touching the other.
+# No secrets: static rules need no Taskless account.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The job name is the status check that branch protection requires on main, so it's
+  # specific: a generic name like `check` could be satisfied by some other workflow's job.
+  taskless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Taskless 0.13 needs Node 22.22+ (its docs' template still says 20, which crashes).
+      # .nvmrc keeps CI and local runs (`nvm use`) on the same version.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Pull requests: check only the files the PR changes. Pushes to main: check everything.
+      - name: Taskless check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+            if [ -z "$FILES" ]; then
+              echo "No changed files."
+              exit 0
+            fi
+            npx -y @taskless/cli@0.13.0 check $FILES
+          else
+            npx -y @taskless/cli@0.13.0 check
+          fi

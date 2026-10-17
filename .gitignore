@@ -170,7 +170,10 @@ HANDOFF.md
 docs/private/
 NOTES.md
 TODO.local.md
-.claude/
+# Claude Code: settings, permissions, and local state stay private. Only shared skills
+# (.claude/skills/, e.g. the Taskless skill) are committed, so every clone gets them.
+.claude/*
+!.claude/skills/
 CLAUDE.local.md
 .cursor/
 .aider*

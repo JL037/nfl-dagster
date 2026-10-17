@@ -1,0 +1,27 @@
+id: asset-checks-are-blocking
+valid:
+  - |
+    @dg.asset_check(asset=raw_pbp, partitions_def=season_partitions, blocking=True)
+    def raw_pbp_unique_plays(context, snowflake):
+        return dg.AssetCheckResult(passed=True)
+  - |
+    @dg.asset_check(asset=raw_schedules, partitions_def=season_partitions, blocking=True)
+    def raw_schedules_scores_present(context, snowflake):
+        return dg.AssetCheckResult(passed=True)
+  - |
+    spec = dg.AssetCheckSpec("unique_plays", asset=raw_pbp, blocking=True)
+invalid:
+  - |
+    @dg.asset_check(asset=raw_pbp, partitions_def=season_partitions)
+    def raw_pbp_unique_plays(context, snowflake):
+        return dg.AssetCheckResult(passed=True)
+  - |
+    @dg.asset_check(asset=raw_schedules, partitions_def=season_partitions, blocking=False)
+    def raw_schedules_scores_present(context, snowflake):
+        return dg.AssetCheckResult(passed=True)
+  - |
+    @asset_check(asset=raw_teams)
+    def raw_teams_has_rows(context, snowflake):
+        return AssetCheckResult(passed=True)
+  - |
+    spec = dg.AssetCheckSpec("unique_plays", asset=raw_pbp)

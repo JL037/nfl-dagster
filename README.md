@@ -151,6 +151,10 @@ nfl-dagster/
 ├── workspaces/                 # One per environment: code location name nfl_dagster_dev / _prod
 ├── .env.example                # Template for .env (Snowflake credentials; .env is gitignored)
 ├── .github/workflows/ci.yml    # CI on every pull request: install, dbt parse, validate, tests
+├── .github/workflows/taskless.yml # Code rules on every pull request (see Code rules)
+├── .taskless/rules/sg/         # Code rules: one folder per rule, with its own test cases
+├── .claude/skills/taskless/    # Skill that tells AI coding agents to follow the rules
+├── .nvmrc                      # Node version for the Taskless CLI (22)
 ├── scripts/
 │   ├── clone_dev.py            # Recreate NFL_DEV as a zero-copy clone of NFL
 │   └── make_charts.py          # Draw the README charts from the marts
@@ -199,6 +203,7 @@ nfl-dagster/
 - Python **3.10 to 3.13**
 - `git` and `openssl`
 - A Snowflake account. A [30-day trial](https://signup.snowflake.com/) works; Standard edition is enough.
+- Optional, only to run the code rules locally: Node **22.22+** (`nvm use` reads `.nvmrc`).
 
 ### 1. Install
 
@@ -371,6 +376,26 @@ The suite needs no Snowflake connection, so it runs in CI on every pull request:
 | `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, an empty load, or a column added or renamed at the source rolls back and never commits; the raw assets pass their columns to the load |
 
 The dbt project has two kinds of tests. **Data tests** (`unique`, `not_null`, `accepted_values`, and the singular tests in `dbt_project/tests/`) check the real data, and Dagster shows each one as an asset check. **Unit tests** (`unit_tests:` in `stg_pbp.yml` and `marts.yml`) run a model's SQL on a few hand-written rows and compare the output with what's expected, so they test the logic, including cases the real data doesn't have yet, like a game with no betting line. Both kinds run in Snowflake as part of `dbt build` (unit tests first, before the model is rebuilt), so they run whenever Dagster rebuilds the models, but not in CI, which never connects to Snowflake. To run just the unit tests in dev: `cd dbt_project && dbt test --select test_type:unit`.
+
+### Code rules (Taskless)
+
+Some of this project's guarantees are conventions in the code, and nothing in the tests above would notice if a new file broke one. Four rules in [`.taskless/rules/sg/`](.taskless/rules/sg/) check them on every pull request ([Taskless](https://taskless.io), running [ast-grep](https://ast-grep.github.io) patterns over the Python):
+
+| Rule | What it protects |
+| --- | --- |
+| `copy-into-only-in-snowflake-load` | Every load goes through `load_parquet()`, so it's audited before it's committed. A `COPY INTO` anywhere else would skip write-audit-publish ([postmortem](docs/postmortems/2026-10-13-automation-gate-race.md)) |
+| `asset-checks-are-blocking` | The dbt automation gate only looks at blocking checks, so a non-blocking check could fail while the marts rebuild from bad data |
+| `no-hardcoded-nfl-database` | `NFL_ENV` chooses the database in one place. A hard-coded `NFL` or `NFL_DEV` elsewhere is wrong in the other environment |
+| `sql-where-values-are-bound` | Values in a `WHERE` clause are bound parameters (`%s`), never pasted into the SQL text. Identifiers like table names, which SQL can't bind, are allowed |
+
+When they were added, the rules found three real problems, all fixed in the same change: the raw assets labeled dev loads as `NFL.RAW.<table>` in the UI, and two chart queries put the season into the SQL text. Each rule has its own passing and failing test cases under `.tests/`, and its `note` explains the reason and the fix.
+
+```bash
+nvm use
+npx @taskless/cli@0.13.0 check
+```
+
+The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/taskless.yml), on the files a pull request changes. No Taskless account is needed. AI coding agents load the rules through the skill in `.claude/skills/taskless/`, so they follow the rules while writing code, not only when CI catches them. SQL files aren't covered: neither engine parses SQL, so the dbt models rely on dbt tests.
 
 ---
 

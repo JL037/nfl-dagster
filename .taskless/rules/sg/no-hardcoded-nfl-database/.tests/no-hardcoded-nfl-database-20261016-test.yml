@@ -1,0 +1,29 @@
+id: no-hardcoded-nfl-database
+valid:
+  - |
+    from nfl_dagster.resources import SNOWFLAKE_DATABASE
+
+    metadata = {"snowflake_table": dg.MetadataValue.text(f"{SNOWFLAKE_DATABASE}.RAW.{table}")}
+  - |
+    cur.execute(f"delete from RAW.{table} where season = %s", (season,))
+  - |
+    def main():
+        """Recreate NFL_DEV as a zero-copy clone of NFL."""
+        load_dotenv(REPO_ROOT / ".env")
+  - |
+    FOURTH_DOWN_SQL = f"""
+        select season, go_pct
+        from {SNOWFLAKE_DATABASE}.marts.team_fourth_down
+    """
+invalid:
+  - |
+    metadata = {"snowflake_table": dg.MetadataValue.text(f"NFL.RAW.{table}")}
+  - |
+    FOURTH_DOWN_SQL = """
+        select season, go_pct
+        from NFL.MARTS.team_fourth_down
+    """
+  - |
+    snowflake_resource = SnowflakeResource(database="NFL_DEV", schema="RAW")
+  - |
+    snowflake_resource = SnowflakeResource(database="NFL", schema="RAW")

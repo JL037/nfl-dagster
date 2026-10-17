@@ -1,0 +1,22 @@
+id: copy-into-only-in-snowflake-load
+language: Python
+severity: error
+message: COPY INTO outside snowflake_load.py; load through load_parquet() so the load is audited before it's committed.
+note: |
+  Every load into a raw table goes through `snowflake_load.load_parquet()`, which runs the
+  COPY inside a transaction and audits the new rows (row count, columns, duplicates)
+  before committing: write-audit-publish. A COPY INTO written anywhere else publishes
+  unaudited data, which is the exact failure in
+  docs/postmortems/2026-10-13-automation-gate-race.md.
+
+  Fix: call `load_parquet(conn, path, table, season, expected_rows=..., audits=...,
+  expected_columns=...)`, or extend it, instead of writing a new COPY.
+ignores:
+  - src/nfl_dagster/snowflake_load.py
+  - tests/**
+rule:
+  kind: string
+  regex: "(?i)\\bcopy\\s+into\\b"
+  not:
+    inside:
+      kind: expression_statement

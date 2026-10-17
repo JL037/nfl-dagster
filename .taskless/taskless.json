@@ -1,0 +1,36 @@
+{
+  "install": {
+    "targets": {
+      ".taskless": {
+        "skills": [
+          "taskless"
+        ],
+        "mode": "canonical"
+      },
+      ".claude": {
+        "skills": [
+          "taskless"
+        ],
+        "mode": "reference"
+      }
+    },
+    "cliVersion": "0.13.0",
+    "onboarded": true,
+    "permissions": {
+      ".claude/settings.json": {
+        "rules": [
+          "Bash(npx @taskless/cli@0.13.0 *)"
+        ],
+        "created": true
+      }
+    }
+  },
+  "version": 11,
+  "rules": {
+    "reconciledTo": "0.13.0",
+    "engines": {
+      "sg": "0.45.3",
+      "vale": "3.23.0"
+    }
+  }
+}
