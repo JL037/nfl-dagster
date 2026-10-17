@@ -43,8 +43,12 @@ def test_checks(asset_graph):
     assert raw_checks == {"raw_pbp_unique_plays", "raw_schedules_scores_present"}
     # The rest are dbt tests (schema tests and singular tests in dbt_project/tests/),
     # which dagster-dbt turns into asset checks.
-    assert len(checks) == 28
-    assert any(c.name == "assert_team_fourth_down_counts_consistent" for c in checks)
+    # dbt unit tests (unit_tests: in the YAML) are not asset checks; they run inside dbt build.
+    assert len(checks) == 29
+    names = {c.name for c in checks}
+    assert "assert_team_fourth_down_counts_consistent" in names
+    # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
+    assert "not_null_game_results_vs_spread_spread_line" in names
 
 
 @pytest.mark.parametrize(

@@ -30,7 +30,17 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: spread_line
+        description: >
+          Points the home team was favored by. A missing spread leaves ats_result null, so
+          this warns (rather than fails): the game is still a valid result, but it drops out
+          of every ATS rate, and someone should know.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
       - name: ats_result
+        description: home, away, or push. Null when the game has no spread_line.
         data_tests:
           - accepted_values:
               arguments:
@@ -55,3 +65,29 @@ models:
         description: Percent of fourth-and-short decisions where the team went for it.
       - name: conversion_pct
         description: Percent of go-for-it attempts that gained a first down. Null if the team never went for it.
+
+# Unit tests run a model's SQL on a few hand-written input rows and compare the output to
+# what we expect. Unlike the data tests above, they test the logic, not the data, so they
+# can cover cases the real data doesn't have yet (no played game is missing a spread today).
+# They run in Snowflake (dbt build / dbt test), with the inputs as literal rows.
+unit_tests:
+  - name: ats_result_covers_pushes_and_missing_spreads
+    description: >
+      result = home_score - away_score, spread_line = points the home team is favored by.
+      Home covers when result > spread_line, away when result < spread_line, a push when
+      they're equal. A game with no spread has no ATS result: null, not 'push'.
+    model: game_results_vs_spread
+    given:
+      - input: ref('stg_schedules')
+        rows:
+          - {game_id: home_covers, is_played: true, home_team: KC, away_team: LV, result: 10, spread_line: 7}
+          - {game_id: away_covers, is_played: true, home_team: KC, away_team: LV, result: 3, spread_line: 7}
+          - {game_id: push, is_played: true, home_team: KC, away_team: LV, result: 7, spread_line: 7}
+          - {game_id: no_spread, is_played: true, home_team: KC, away_team: LV, result: 7, spread_line: null}
+          - {game_id: not_played, is_played: false, home_team: KC, away_team: LV, result: null, spread_line: 3}
+    expect:
+      rows:
+        - {game_id: home_covers, home_cover_margin: 3, ats_winner: KC, ats_result: home}
+        - {game_id: away_covers, home_cover_margin: -4, ats_winner: LV, ats_result: away}
+        - {game_id: push, home_cover_margin: 0, ats_winner: PUSH, ats_result: push}
+        - {game_id: no_spread, home_cover_margin: null, ats_winner: null, ats_result: null}
