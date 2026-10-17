@@ -182,5 +182,8 @@ def test_raw_assets_pass_their_columns(monkeypatch):
 
     monkeypatch.setattr(raw, "load_parquet", fake_load_parquet)
     df = pl.DataFrame({"season": [2025], "game_id": ["g"]})
-    raw.load_to_snowflake(FakeSnowflake(), df, Path("season=2025.parquet"), "PBP", 2025)
+    metadata = raw.load_to_snowflake(FakeSnowflake(), df, Path("season=2025.parquet"), "PBP", 2025)
     assert calls["expected_columns"] == ["season", "game_id"]
+    # The label names the database NFL_ENV chose (NFL_DEV in tests), not a hard-coded NFL.
+    assert metadata["snowflake_table"].value == f"{raw.SNOWFLAKE_DATABASE}.RAW.PBP"
+    assert raw.SNOWFLAKE_DATABASE == "NFL_DEV"

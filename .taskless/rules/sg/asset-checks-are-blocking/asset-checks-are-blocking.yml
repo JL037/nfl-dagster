@@ -1,0 +1,29 @@
+id: asset-checks-are-blocking
+language: Python
+severity: error
+message: Asset check without blocking=True; the dbt models' automation gate ignores non-blocking checks.
+note: |
+  The dbt models rebuild through declarative automation, gated by
+  NO_FAILED_BLOCKING_CHECKS_UPSTREAM in assets/dbt.py, which uses
+  `any_checks_match(check_failed(), blocking_only=True)`. A check that isn't blocking
+  can fail and the marts rebuild from the bad data anyway, with nothing in the UI
+  saying the gate was skipped.
+
+  Fix: add `blocking=True`. If a check really should only report (never gate), keep
+  `blocking=False` and add `# ast-grep-ignore: asset-checks-are-blocking` above it with
+  the reason.
+rule:
+  kind: call
+  has:
+    field: function
+    any:
+      - kind: attribute
+        regex: "^dg\\.(asset_check|AssetCheckSpec)$"
+      - kind: identifier
+        regex: "^(asset_check|AssetCheckSpec)$"
+  not:
+    has:
+      field: arguments
+      has:
+        kind: keyword_argument
+        regex: "^blocking\\s*=\\s*True$"

@@ -1,0 +1,21 @@
+id: sql-where-values-are-bound
+language: Python
+severity: error
+message: A value after WHERE is interpolated into the SQL string; pass it as a bound parameter (%s) instead.
+note: |
+  Every query in this repo binds its values: `where season = %s` plus a params tuple.
+  Interpolating a value into the SQL text (`where season = {season}`) skips the driver's
+  quoting, so a bad or hostile value changes the query itself (SQL injection), and the
+  query text changes with every value, which defeats Snowflake's result cache.
+
+  Interpolation is fine for identifiers that can't be bound: table, stage, and file
+  format names (`delete from RAW.{table} where season = %s`). That's why this rule
+  only looks at interpolations that come after WHERE.
+
+  Fix: `cur.execute("select ... where season = %s", (season,))`.
+rule:
+  kind: string
+  has:
+    kind: interpolation
+    stopBy: end
+  regex: "(?is)\\bwhere\\b.*\\{[^}]+\\}"

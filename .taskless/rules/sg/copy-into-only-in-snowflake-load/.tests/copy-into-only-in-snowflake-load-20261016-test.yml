@@ -1,0 +1,31 @@
+id: copy-into-only-in-snowflake-load
+valid:
+  - |
+    results = load_parquet(
+        conn,
+        path,
+        table,
+        season,
+        expected_rows=df.height,
+        audits=AUDITS.get(table),
+        expected_columns=df.columns,
+    )
+  - |
+    def load_to_snowflake(snowflake, df, path, table, season=None):
+        """Load the Parquet file into RAW.<table> (write-audit-publish) via COPY INTO."""
+        return season
+  - |
+    cur.execute(f"delete from RAW.{table} where season = %s", (season,))
+invalid:
+  - |
+    cur.execute(
+        f"""
+        copy into RAW.{table}
+        from @{STAGE}/{folder}/
+        files = ('{path.name}')
+        file_format = (format_name = '{FILE_FORMAT}')
+        match_by_column_name = case_insensitive
+        """
+    )
+  - |
+    sql = "COPY INTO RAW.TEAMS FROM @RAW.RAW_STAGE/teams/ FILES = ('teams.parquet')"

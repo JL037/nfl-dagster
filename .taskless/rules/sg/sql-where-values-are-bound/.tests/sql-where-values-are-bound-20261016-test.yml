@@ -1,0 +1,39 @@
+id: sql-where-values-are-bound
+valid:
+  - |
+    cur.execute(f"delete from RAW.{table} where season = %s", (season,))
+  - |
+    cur.execute(f"delete from RAW.{table}")
+  - |
+    QB_SQL = f"""
+        select passer_name, team, epa_per_dropback
+        from {SNOWFLAKE_DATABASE}.marts.qb_season_epa
+        where season = %s
+        order by epa_per_dropback desc
+    """
+  - |
+    total_rows, duplicate_rows = conn.cursor().execute(
+        """
+        select count(*), count(*) - count(distinct game_id, play_id)
+        from RAW.PBP
+        where season = %s
+        """,
+        (season,),
+    ).fetchone()
+invalid:
+  - |
+    cur.execute(f"delete from RAW.{table} where season = {season}")
+  - |
+    QB_SQL = f"""
+        select passer_name, team, epa_per_dropback
+        from {SNOWFLAKE_DATABASE}.marts.qb_season_epa
+        where season = {LAST_FULL_SEASON}
+        order by epa_per_dropback desc
+    """
+  - |
+    FOURTH_DOWN_SQL = f"""
+        select season, round(100 * sum(went_for_it) / sum(fourth_downs), 1) as go_pct
+        from {SNOWFLAKE_DATABASE}.marts.team_fourth_down
+        where season <= {LAST_FULL_SEASON}
+        group by season
+    """

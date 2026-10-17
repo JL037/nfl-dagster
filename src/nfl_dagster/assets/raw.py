@@ -5,7 +5,7 @@ from dagster_snowflake import SnowflakeResource
 from tabulate import tabulate
 
 from nfl_dagster.partitions import season_partitions
-from nfl_dagster.resources import REPO_ROOT
+from nfl_dagster.resources import REPO_ROOT, SNOWFLAKE_DATABASE
 from nfl_dagster.snowflake_load import AuditFailed, load_parquet
 
 RAW_DIR = REPO_ROOT / "data" / "raw"
@@ -78,7 +78,7 @@ def load_to_snowflake(snowflake: SnowflakeResource, df: pl.DataFrame, path, tabl
                 metadata={name: dg.MetadataValue.int(n) for name, n in e.results.items()},
             ) from e
     return {
-        "snowflake_table": dg.MetadataValue.text(f"NFL.RAW.{table}"),
+        "snowflake_table": dg.MetadataValue.text(f"{SNOWFLAKE_DATABASE}.RAW.{table}"),
         **{name: dg.MetadataValue.int(n) for name, n in results.items()},
     }
 
