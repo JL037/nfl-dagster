@@ -480,6 +480,7 @@ Each of these was run against the pipeline while building it: change or break so
 5. **Watch automation work.** Turn on `default_automation_condition_sensor` (**Automation**), then refresh 2026 from **Jobs → current_season_refresh → Materialize all…**. Within about 30 seconds, a run you didn't launch rebuilds `stg_pbp`, `stg_schedules`, and the marts built on them. `stg_teams` stays put, because `raw_teams` didn't change.
 6. **Watch automation refuse to run.** Add a season that hasn't been loaded (e.g. change `FIRST_SEASON` to one year earlier), then refresh 2026 again. Nothing rebuilds: the dbt asset's **Automation** tab shows `any_deps_missing` true. Load the new season and automation catches up on its own, because `SINCE (handled)` remembered the pending update.
 7. **Try to sneak bad data through.** In `raw_pbp`, temporarily add a duplicated pass play (`df = pl.concat([df, df.filter(pl.col("play_type") == "pass").head(1)])`) and refresh 2026. The load's audit finds the duplicate and rolls back: the `raw_pbp` step fails, `RAW.PBP` keeps its previous rows, no materialization is recorded, and automation never rebuilds the pbp marts. (The first version of this project relied only on the automation gate, and lost a race to it: see the [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).)
+8. **Rename a column at the source.** In `raw_teams`, temporarily rename a column as if nflverse had changed it (`df = nfl.load_teams().rename({"team_color": "team_colour"})`) and materialize `raw_teams`. The step fails with `columns_not_in_table: ['TEAM_COLOUR']; columns_not_in_file: ['TEAM_COLOR']`, and `RAW.TEAMS` keeps its 36 rows with `team_color` filled in. Without this audit, the same load succeeds and `team_color` becomes `NULL`. Undo the rename and materialize again, which also rewrites `data/raw/teams.parquet`.
 
 ---
 
@@ -489,7 +490,7 @@ Each of these was run against the pipeline while building it: change or break so
 
 **Idempotent loads, one season at a time.** `snowflake_load.load_parquet()` deletes the season's rows and runs `COPY INTO` inside one transaction. Running a partition once or five times gives the same table, which is what makes backfills, retries, and fixes safe.
 
-**Write-audit-publish.** (Full story: [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).) Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file. If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
+**Write-audit-publish.** (Full story: [postmortem](docs/postmortems/2026-10-13-automation-gate-race.md).) Inside that same transaction, the load audits the new rows before committing: no duplicate plays, no game with only one score, rows loaded equal to rows in the file, and the table's columns equal to the file's (see below). If any audit fails, the transaction rolls back (the table keeps its previous data) and the asset fails, so no materialization is recorded and nothing downstream reacts. This came from a real bug: the dbt models' automation gate checked for failed upstream checks, but the automation sensor could evaluate in the few seconds after a raw asset was written and before its check finished, and rebuild the marts from bad data. Checks that run after publishing can only alert; validating before the commit removes the race entirely. The asset checks remain the per-season report in the UI, and the gate remains as defense in depth.
 
 **Schedule the source, automate the rest.** Only the raw refresh has a schedule. The dbt models use declarative automation (`eager`), so they rebuild after their inputs change, never while an input is missing or in progress, and only the models downstream of what changed. There's no second schedule to keep in sync.
 
@@ -500,6 +501,10 @@ Each of these was run against the pipeline while building it: change or break so
 **Tables created from the file's own schema.** The first load creates each table with `INFER_SCHEMA`, so the 372 play-by-play columns don't need a hand-written `CREATE TABLE`. `IGNORE_CASE => TRUE` gives plain uppercase column names, so SQL doesn't need quotes around every column. Columns are matched by name (`MATCH_BY_COLUMN_NAME`), not position.
 
 **Schema drift measured, then pinned.** Across the 2016–2026 seasons, only one column changes type: `goal_to_go` is an integer in 7 seasons and a float in 4. `raw_pbp` casts it to a float before writing, so every season's file matches the table.
+
+**A column change fails the load instead of loading quietly.** Matching by name has a blind spot: when the file's columns differ from the table's, `COPY INTO` still succeeds. A column the table doesn't have is dropped, and a table column the file doesn't have is filled with `NULL`. I tried it on a temporary table, with a file where `passer_id` was renamed `passer_player_id` and a new column added. The COPY reported `LOADED`, 0 errors, and the right row count, and `passer_id` came back `NULL` on every row. Every audit that existed then would have passed, and the QB marts would have quietly lost each new season's dropbacks. So the load now compares the file's columns with the table's (`information_schema.columns`) inside the transaction, and rolls back if they differ, naming the columns (`columns_not_in_table: ['PASSER_PLAYER_ID']; columns_not_in_file: ['PASSER_ID']`).
+
+Snowflake can instead add new columns on its own (`ENABLE_SCHEMA_EVOLUTION = TRUE` on the table). I didn't use it, because it handles only half the problem: a renamed column would arrive as a new column while the old one went `NULL`, and nothing would fail. A column change in a source is something a person should look at once (see [Troubleshooting](#troubleshooting)), not something to absorb silently.
 
 **Least-privilege access with key-pair auth.** The pipeline runs as `NFL_SVC`, a service user that can't log in with a password, under `NFL_ROLE`, which owns only the `NFL` database. No secret is in the repo: every setting comes from environment variables, and the private key lives outside the project.
 
@@ -586,6 +591,12 @@ Reload the code location from the **Deployment** page, then hard-refresh the bro
 
 **The catalog shows only old assets, with code location "–"**
 The code server stopped (for example after the computer slept). Reload from **Deployment**, or restart `dagster dev`. Assets with "–" can also be leftovers from renamed assets; they only have history, not code.
+
+**A load fails with `columns_not_in_table` or `columns_not_in_file`**
+nflverse changed the columns of a dataset, and the load rolled back, so Snowflake still has the previous data. The error lists the columns. Decide what the change means, then fix the table in dev first:
+- A new column you want: `alter table nfl_dev.raw.pbp add column new_stat float;` (check the type in the Parquet file first), then rerun.
+- A renamed column: `alter table nfl_dev.raw.pbp rename column passer_id to passer_player_id;`, update the dbt staging model that reads it, then rerun.
+- A removed column: drop it from the table (`alter table ... drop column ...`) and from any model that reads it.
 
 **Run history disappears after restarting `dagster dev`**
 Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagster_home/dev` or `.dagster_home/prod`. Plain `dagster dev` without it uses a temporary folder.
