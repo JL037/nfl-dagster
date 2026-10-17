@@ -365,10 +365,12 @@ The suite needs no Snowflake connection, so it runs in CI on every pull request:
 
 | File | What it proves |
 | --- | --- |
-| `tests/test_definitions.py` | The 11 assets and 28 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
+| `tests/test_definitions.py` | The 11 assets and 29 checks exist; lineage from raw to marts; season partitions; automation only on the dbt models; the job and schedule target the right assets and partition |
 | `tests/test_resources.py` | `NFL_ENV` maps to the right database and dbt target, defaults to dev, and rejects unknown values |
 | `tests/test_environments.py` | `make dev` / `make prod` each use their own workspace (location name), port, and Dagster home |
-| `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, or an empty load rolls back and never commits |
+| `tests/test_snowflake_load.py` | Write-audit-publish, against a fake Snowflake connection: audits run before the commit, and a failed audit, a row-count mismatch, an empty load, or a column added or renamed at the source rolls back and never commits; the raw assets pass their columns to the load |
+
+The dbt project has two kinds of tests. **Data tests** (`unique`, `not_null`, `accepted_values`, and the singular tests in `dbt_project/tests/`) check the real data, and Dagster shows each one as an asset check. **Unit tests** (`unit_tests:` in `stg_pbp.yml` and `marts.yml`) run a model's SQL on a few hand-written rows and compare the output with what's expected, so they test the logic, including cases the real data doesn't have yet, like a game with no betting line. Both kinds run in Snowflake as part of `dbt build` (unit tests first, before the model is rebuilt), so they run whenever Dagster rebuilds the models, but not in CI, which never connects to Snowflake. To run just the unit tests in dev: `cd dbt_project && dbt test --select test_type:unit`.
 
 ---
 
