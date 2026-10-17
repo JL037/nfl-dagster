@@ -388,7 +388,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 
 | Model | Dagster asset | Description |
 | --- | --- | --- |
-| `stg_pbp` | `staging/stg_pbp` | Real plays only (`play_type in ('pass', 'run')`), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
+| `stg_pbp` | `staging/stg_pbp` | Real plays from scrimmage only (`play_type in ('pass', 'run')`, two-point tries left out), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
 | `stg_schedules` | `staging/stg_schedules` | Game results and betting lines, plus `is_played` |
 | `stg_teams` | `staging/stg_teams` | Team lookup |
 | `stg_fourth_downs` | `staging/stg_fourth_downs` | One row per fourth-down decision: went for it (pass or run, fakes included) or kicked (punt or field goal). Penalties, kneels, and spikes left out. Separate from `stg_pbp`, which keeps only pass and run plays |
@@ -410,7 +410,7 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/qb_epa_2025-dark.png">
-  <img alt="Bar chart of the top 10 quarterbacks by EPA per dropback in 2025, led by Drake Maye at 0.318." src="docs/images/qb_epa_2025-light.png">
+  <img alt="Bar chart of the top 10 quarterbacks by EPA per dropback in 2025, led by Drake Maye at 0.316." src="docs/images/qb_epa_2025-light.png">
 </picture>
 
 Charts are drawn from the marts by [`scripts/make_charts.py`](scripts/make_charts.py) (`NFL_ENV=prod python scripts/make_charts.py`), in light and dark versions.
@@ -419,25 +419,25 @@ From the 2025 regular season:
 
 | Team | Off. EPA/play | Def. EPA/play | Net |
 | --- | --- | --- | --- |
-| NE | 0.159 | -0.047 | 0.206 |
-| LA | 0.145 | -0.061 | 0.206 |
-| BUF | 0.136 | -0.016 | 0.152 |
-| SEA | 0.033 | -0.116 | 0.149 |
-| DEN | 0.050 | -0.088 | 0.138 |
+| LA | 0.145 | -0.062 | 0.207 |
+| NE | 0.157 | -0.046 | 0.203 |
+| BUF | 0.141 | -0.015 | 0.156 |
+| SEA | 0.030 | -0.118 | 0.147 |
+| JAX | 0.033 | -0.104 | 0.138 |
 
 | QB | Team | Dropbacks | EPA/dropback | Success rate |
 | --- | --- | --- | --- | --- |
-| D.Maye | NE | 602 | 0.318 | 0.553 |
-| J.Love | GB | 485 | 0.262 | 0.505 |
+| D.Maye | NE | 601 | 0.316 | 0.552 |
+| J.Love | GB | 483 | 0.259 | 0.503 |
 | M.Stafford | LA | 624 | 0.223 | 0.527 |
-| B.Purdy | SF | 316 | 0.202 | 0.532 |
+| B.Purdy | SF | 313 | 0.206 | 0.534 |
 | J.Goff | DET | 619 | 0.177 | 0.486 |
 
 Across every game played since 2015, home teams covered the spread in 47.7% of games, away teams in 49.7%, and 2.6% were pushes.
 
 **The fourth-down revolution** (`team_fourth_down`): on fourth-and-short in competitive games, teams went for it **26.8%** of the time in 2015 and **61.8%** in 2025. The 2025 leaders were Indianapolis (84.2%, converting 62.5%), Buffalo (82.4%, converting only 42.9%, mostly on passes: 2 of 8), and Dallas (76.5%, converting 76.9%).
 
-The 2025 numbers above are identical on DuckDB and Snowflake, which is how the migration was verified. (2015 was added after the migration, by extending the season partitions back one year.)
+The migration from DuckDB was verified by getting identical 2025 numbers on both. (2015 was added after the migration, by extending the season partitions back one year.) The EPA numbers above have changed slightly since then, on purpose: two-point tries are no longer counted as plays (see [Design decisions](#design-decisions)). Before that change, Maye's 2025 EPA per dropback was 0.318, and NE led the net EPA table.
 
 ---
 
@@ -515,6 +515,8 @@ Snowflake can instead add new columns on its own (`ENABLE_SCHEMA_EVOLUTION = TRU
 **Regular season only in the marts.** Only 12–14 teams play in the postseason, so including it would weigh some teams' numbers toward playoff opponents.
 
 **Single-column keys in the marts** (`team_season_key`, `qb_season_key`), so plain dbt `unique` tests work without extra packages.
+
+**Two-point tries aren't plays.** nflverse logs a two-point try as a pass or run, so it used to count toward EPA per play and per dropback (1,410 tries since 2015). It's left out of `stg_pbp` now, because it isn't a down: it's an untimed, all-or-nothing snap from the 2 after a touchdown, and teams that score more touchdowns get more of them. Official passing stats leave them out for the same reason. It's a definition choice, not a bug fix, so I measured it before deciding: a QB's EPA per dropback moved by 0.002 at the median and 0.018 at most, a few close QBs swapped places, and one QB-season (Beathard 2018, exactly 200 dropbacks) fell below the cutoff. Small, but the contract-value mart will rank close QBs against each other, so a play has to mean the same thing for everyone. A dbt unit test (`keeps_scrimmage_plays_only`) keeps the rule in place.
 
 **QB stats grouped by `passer_id`, not name.** Abbreviated names like `J.Daniels` belong to several players. `passer` / `passer_id` also include scrambles, which `passer_player_name` doesn't.
 

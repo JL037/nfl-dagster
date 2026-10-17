@@ -19,3 +19,23 @@ models:
           - not_null
       - name: passer_id
         description: Player id of the dropback QB, including scrambles. Null on designed runs.
+
+# Unit tests run the model's SQL on hand-written rows (see marts.yml for more on them).
+unit_tests:
+  - name: keeps_scrimmage_plays_only
+    description: >
+      Pass and run plays from scrimmage stay; two-point tries and non-offensive plays go.
+      A pass with a NULL two_point_attempt flag is kept: NULL means "not flagged", not
+      "a two-point try".
+    model: stg_pbp
+    given:
+      - input: source('raw', 'pbp')
+        rows:
+          - {game_id: G, play_id: 1, play_type: pass, two_point_attempt: 0, epa: 0.5}
+          - {game_id: G, play_id: 2, play_type: pass, two_point_attempt: 1, epa: 1.2}
+          - {game_id: G, play_id: 3, play_type: run, two_point_attempt: null, epa: -0.3}
+          - {game_id: G, play_id: 4, play_type: kickoff, two_point_attempt: 0, epa: 0.1}
+    expect:
+      rows:
+        - {play_key: G-1, play_type: pass}
+        - {play_key: G-3, play_type: run}
