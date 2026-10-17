@@ -38,23 +38,25 @@ THEMES = {
 FOURTH_DOWN_SQL = f"""
     select season, round(100 * sum(went_for_it) / sum(fourth_downs), 1)
     from {SNOWFLAKE_DATABASE}.marts.team_fourth_down
-    where season <= {LAST_FULL_SEASON}
+    where season <= %s
     group by season order by season
 """
 
 QB_SQL = f"""
     select passer_name, team, epa_per_dropback, dropbacks
     from {SNOWFLAKE_DATABASE}.marts.qb_season_epa
-    where season = {LAST_FULL_SEASON}
+    where season = %s
     order by epa_per_dropback desc
     limit 10
 """
 
 
-def query(sql: str) -> list[tuple]:
+def query(sql: str, params: tuple = ()) -> list[tuple]:
+    # Values go in as bound parameters (%s), never into the SQL text; only the database
+    # name, an identifier that can't be bound, is interpolated above.
     with dg.build_resources({"snowflake": snowflake_resource}) as r:
         with r.snowflake.get_connection() as conn:
-            return conn.cursor().execute(sql).fetchall()
+            return conn.cursor().execute(sql, params).fetchall()
 
 
 def style_axes(ax, t: dict, grid_axis: str) -> None:
@@ -171,8 +173,8 @@ def qb_chart(rows: list[tuple], t: dict, path: Path) -> None:
 def main() -> None:
     load_dotenv()
     OUT.mkdir(parents=True, exist_ok=True)
-    fourth_down = query(FOURTH_DOWN_SQL)
-    qbs = query(QB_SQL)
+    fourth_down = query(FOURTH_DOWN_SQL, (LAST_FULL_SEASON,))
+    qbs = query(QB_SQL, (LAST_FULL_SEASON,))
     plt.rcParams["font.family"] = "DejaVu Sans"
     for mode, t in THEMES.items():
         fourth_down_chart(fourth_down, t, OUT / f"fourth_down_trend-{mode}.png")
