@@ -1,7 +1,7 @@
 import dagster as dg
 
 from nfl_dagster.assets.dbt import nfl_dbt_models
-from nfl_dagster.assets.raw import raw_pbp, raw_schedules, raw_teams
+from nfl_dagster.assets.raw import raw_contracts, raw_pbp, raw_schedules, raw_teams
 from nfl_dagster.checks import raw_pbp_unique_plays, raw_schedules_scores_present
 from nfl_dagster.partitions import CURRENT_SEASON
 from nfl_dagster.resources import dbt_resource, snowflake_resource
@@ -39,7 +39,7 @@ def current_season_schedule():
 
 
 defs = dg.Definitions(
-    assets=[raw_teams, raw_pbp, raw_schedules, nfl_dbt_models],
+    assets=[raw_teams, raw_contracts, raw_pbp, raw_schedules, nfl_dbt_models],
     asset_checks=[raw_pbp_unique_plays, raw_schedules_scores_present],
     jobs=[raw_data_checks, current_season_refresh],
     schedules=[current_season_schedule],

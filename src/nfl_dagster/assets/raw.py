@@ -18,6 +18,10 @@ SCHEDULES_PREVIEW_COLUMNS = [
     "game_id", "week", "away_team", "away_score", "home_team", "home_score",
     "spread_line", "total_line",
 ]
+# Leaves out season_history and contract_history: each is a list of structs, too long to preview.
+CONTRACTS_PREVIEW_COLUMNS = [
+    "player", "position", "team", "year_signed", "years", "apy", "apy_cap_pct", "gsis_id",
+]
 
 
 def parquet_metadata(df: pl.DataFrame, path, preview_columns: list[str] | None = None) -> dict:
@@ -48,6 +52,13 @@ AUDITS = {
             "select count_if((home_score is null) <> (away_score is null))"
             " from RAW.SCHEDULES where season = %s"
         ),
+    },
+    # otc_id (OverTheCap's player id) is the only player key that's always present; gsis_id,
+    # which joins to play-by-play, is null for players nflverse can't map. The source also
+    # has exact duplicate rows, so there's deliberately no uniqueness audit: deduping is
+    # staging's job, and raw stays a faithful copy of what nflverse delivered.
+    "CONTRACTS": {
+        "missing_otc_id": "select count_if(otc_id is null) from RAW.CONTRACTS",
     },
 }
 
@@ -98,6 +109,29 @@ def raw_teams(snowflake: SnowflakeResource) -> dg.MaterializeResult:
     # MaterializeResult just records that the asset was materialized, plus metadata.
     return dg.MaterializeResult(
         metadata={**parquet_metadata(df, path), **load_to_snowflake(snowflake, df, path, "TEAMS")}
+    )
+
+
+@dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_contracts(snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """One row per contract, from nflreadpy.load_contracts() (OverTheCap via nflverse).
+
+    season_history and contract_history are lists of structs that describe the player, not
+    the contract: every row for a player carries the same lists. They're loaded as they are
+    (Snowflake stores them as semi-structured values) and flattened in dbt staging, so the
+    raw table stays a copy of the source and the modeling decisions live in versioned SQL.
+    """
+    df = nfl.load_contracts()
+
+    path = RAW_DIR / "contracts.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+
+    return dg.MaterializeResult(
+        metadata={
+            **parquet_metadata(df, path, CONTRACTS_PREVIEW_COLUMNS),
+            **load_to_snowflake(snowflake, df, path, "CONTRACTS"),
+        }
     )
 
 

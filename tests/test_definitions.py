@@ -11,7 +11,7 @@ from nfl_dagster.assets.dbt import DBT_AUTOMATION_CONDITION
 from nfl_dagster.definitions import current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
-RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams"}
+RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts"}
 DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
@@ -73,7 +73,8 @@ def test_lineage(asset_graph, asset, upstream):
 def test_raw_assets_are_partitioned_by_season(asset_graph):
     for asset in ("raw_pbp", "raw_schedules"):
         assert asset_graph.get(dg.AssetKey(asset)).partitions_def == season_partitions
-    assert asset_graph.get(dg.AssetKey("raw_teams")).partitions_def is None
+    for asset in ("raw_teams", "raw_contracts"):
+        assert asset_graph.get(dg.AssetKey(asset)).partitions_def is None
     expected = [str(s) for s in range(FIRST_SEASON, CURRENT_SEASON + 1)]
     assert season_partitions.get_partition_keys() == expected
 
