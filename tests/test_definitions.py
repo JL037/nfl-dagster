@@ -17,6 +17,7 @@ DBT_ASSETS = {
     "staging/stg_schedules",
     "staging/stg_teams",
     "staging/stg_fourth_downs",
+    "staging/stg_cap_hits",
     "marts/team_season_epa",
     "marts/qb_season_epa",
     "marts/game_results_vs_spread",
@@ -44,11 +45,15 @@ def test_checks(asset_graph):
     # The rest are dbt tests (schema tests and singular tests in dbt_project/tests/),
     # which dagster-dbt turns into asset checks.
     # dbt unit tests (unit_tests: in the YAML) are not asset checks; they run inside dbt build.
-    assert len(checks) == 29
+    assert len(checks) == 37
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
     assert "not_null_game_results_vs_spread_spread_line" in names
+    # Reads raw.contracts and stg_cap_hits; its meta.dagster.ref picks which asset owns it.
+    assert dg.AssetCheckKey(
+        dg.AssetKey(["staging", "stg_cap_hits"]), "assert_cap_hits_keep_every_season"
+    ) in checks
 
 
 @pytest.mark.parametrize(
@@ -58,6 +63,7 @@ def test_checks(asset_graph):
         ("staging/stg_pbp", {"raw_pbp"}),
         ("staging/stg_schedules", {"raw_schedules"}),
         ("staging/stg_teams", {"raw_teams"}),
+        ("staging/stg_cap_hits", {"raw_contracts"}),
         ("marts/team_season_epa", {"staging/stg_pbp", "staging/stg_teams"}),
         ("marts/qb_season_epa", {"staging/stg_pbp"}),
         ("marts/game_results_vs_spread", {"staging/stg_schedules"}),

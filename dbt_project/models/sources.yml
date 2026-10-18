@@ -32,3 +32,14 @@ sources:
           meta:
             dagster:
               asset_key: ["raw_schedules"]
+
+      - name: contracts
+        description: >
+          One row per contract (nflreadpy.load_contracts, OverTheCap via nflverse), loaded whole
+          each time. season_history and contract_history are VARIANT lists that describe the
+          player, not the contract: every row for a player carries the same lists. The source
+          also has exact duplicate rows; stg_cap_hits handles both.
+        config:
+          meta:
+            dagster:
+              asset_key: ["raw_contracts"]

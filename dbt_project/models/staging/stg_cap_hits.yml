@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_cap_hits
+    description: >
+      One row per player per season with that season's salary cap charge, from OverTheCap's
+      season history (raw.contracts). Includes future seasons already on the books.
+    columns:
+      - name: player_season_key
+        description: otc_id and season joined, e.g. 12345-2025.
+        data_tests:
+          - unique
+          - not_null
+      - name: otc_id
+        description: OverTheCap's player id. Always present.
+        data_tests:
+          - not_null
+      - name: gsis_id
+        description: NFL player id; joins to stg_pbp.passer_id. Null for players nflverse can't map.
+      - name: season
+        data_tests:
+          - not_null
+      - name: cap_number
+        description: Cap charge for the season, in millions of dollars.
+        data_tests:
+          - not_null
+      - name: cap_percent
+        description: OverTheCap's share of the team's adjusted cap, as a fraction (0.026 = 2.6%).
+
+unit_tests:
+  - name: one_row_per_player_season
+    description: >
+      A player with two contract rows (both carrying the same season history) gets each
+      season once, not once per contract. The 'Total' row and entries without a real year
+      are dropped.
+    model: stg_cap_hits
+    given:
+      - input: source('raw', 'contracts')
+        format: sql
+        rows: |
+          select 1 as otc_id, 'G1' as gsis_id, 'Rookie Deal' as player, 'QB' as position,
+              2024 as year_signed,
+              parse_json('[{"year": "2024", "team": "Patriots", "cap_number": 6.6, "cap_percent": 0.025},
+                           {"year": "2025", "team": "Patriots", "cap_number": 8.3, "cap_percent": 0.026},
+                           {"year": "Total", "team": "Total", "cap_number": 14.9},
+                           {"year": null, "team": null, "cap_number": null}]') as season_history
+          union all
+          select 1, 'G1', 'Rookie Deal', 'QB', 2025,
+              parse_json('[{"year": "2024", "team": "Patriots", "cap_number": 6.6, "cap_percent": 0.025},
+                           {"year": "2025", "team": "Patriots", "cap_number": 8.3, "cap_percent": 0.026},
+                           {"year": "Total", "team": "Total", "cap_number": 14.9},
+                           {"year": null, "team": null, "cap_number": null}]')
+    expect:
+      rows:
+        - {player_season_key: 1-2024, season: 2024, cap_number: 6.6}
+        - {player_season_key: 1-2025, season: 2025, cap_number: 8.3}
