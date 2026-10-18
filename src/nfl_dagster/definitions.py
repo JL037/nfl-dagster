@@ -38,11 +38,25 @@ def current_season_schedule():
     return dg.RunRequest(partition_key=str(CURRENT_SEASON))
 
 
+# Contracts change any week (signings, releases, extensions), and nothing refreshes them
+# otherwise. raw_contracts isn't partitioned, so it can't join current_season_refresh (a job
+# holds assets with one partitions definition); it gets its own job on the same schedule, so
+# all raw data refreshes together. stg_cap_hits and qb_contract_value follow through
+# declarative automation, like every dbt model.
+contracts_refresh = dg.define_asset_job("contracts_refresh", selection=[raw_contracts])
+
+contracts_schedule = dg.ScheduleDefinition(
+    job=contracts_refresh,
+    cron_schedule=current_season_schedule.cron_schedule,
+    execution_timezone="America/Los_Angeles",
+)
+
+
 defs = dg.Definitions(
     assets=[raw_teams, raw_contracts, raw_pbp, raw_schedules, nfl_dbt_models],
     asset_checks=[raw_pbp_unique_plays, raw_schedules_scores_present],
-    jobs=[raw_data_checks, current_season_refresh],
-    schedules=[current_season_schedule],
+    jobs=[raw_data_checks, current_season_refresh, contracts_refresh],
+    schedules=[current_season_schedule, contracts_schedule],
     resources={
         # Keys must match the parameter names assets ask for (e.g. `dbt: DbtCliResource`).
         "dbt": dbt_resource,

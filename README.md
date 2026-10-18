@@ -72,7 +72,7 @@ The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Acl
    - Which quarterbacks generated the most value per dropback?
    - Which quarterbacks were worth their share of the salary cap?
    - How often did home teams cover the spread?
-6. **Orchestrate:** a schedule refreshes the current season every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
+6. **Orchestrate:** schedules refresh the current season and the contracts every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
 
 ---
 

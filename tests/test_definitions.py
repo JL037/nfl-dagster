@@ -8,7 +8,7 @@ import dagster as dg
 import pytest
 
 from nfl_dagster.assets.dbt import DBT_AUTOMATION_CONDITION
-from nfl_dagster.definitions import current_season_schedule, defs
+from nfl_dagster.definitions import contracts_schedule, current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
 RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts"}
@@ -130,3 +130,14 @@ def test_schedule_requests_current_season():
     with dg.build_schedule_context() as context:
         request = current_season_schedule(context)
     assert request.partition_key == str(CURRENT_SEASON)
+
+
+def test_contracts_refresh_job_and_schedule():
+    """Contracts aren't partitioned, so they can't share current_season_refresh; they get their
+    own job on the same Tuesday/Friday schedule, so all raw data refreshes together."""
+    job = defs.resolve_job_def("contracts_refresh")
+    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts"}
+    assert job.partitions_def is None
+    assert contracts_schedule.cron_schedule == current_season_schedule.cron_schedule
+    assert contracts_schedule.execution_timezone == "America/Los_Angeles"
+    assert contracts_schedule.job_name == "contracts_refresh"
