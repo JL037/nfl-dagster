@@ -29,7 +29,7 @@ I built it to learn Dagster and Snowflake in depth by running a real pipeline en
 | 2 | **Separate dev and prod**, chosen by one variable, shown in the UI, with a zero-copy Snowflake clone for dev | [Environments and workflow](#environments-and-workflow), [`resources.py`](src/nfl_dagster/resources.py) |
 | 3 | **Tests that guard the guarantees**, mutation-checked: they fail if the audit or the automation gate is removed | [`tests/`](tests/), [CI](.github/workflows/ci.yml) |
 | 4 | **Schedule the source, automate the rest**: declarative automation with a quality gate | [`assets/dbt.py`](src/nfl_dagster/assets/dbt.py), [`definitions.py`](src/nfl_dagster/definitions.py) |
-| 5 | **From exploration to a tested mart**, with the metric's definition documented next to the SQL | [`team_fourth_down.sql`](dbt_project/models/marts/team_fourth_down.sql) |
+| 5 | **From exploration to a tested mart**, with the metric's definition documented next to the SQL | [`team_fourth_down.sql`](dbt_project/models/marts/team_fourth_down.sql), [`qb_contract_value.sql`](dbt_project/models/marts/qb_contract_value.sql) |
 | 6 | **A warehouse migration verified against a baseline**: DuckDB → Snowflake, identical results before switching | [Design decisions](#design-decisions) |
 | 7 | **What it would take to run this in production** | [Running it in production](#running-it-in-production) |
 
@@ -63,13 +63,14 @@ The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Acl
 
 ## What it does
 
-1. **Extract:** downloads play-by-play, schedules, and team data for the 2015 through current NFL seasons using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
+1. **Extract:** downloads play-by-play, schedules, and team data for the 2015 through current NFL seasons, plus player contracts, using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
 2. **Land:** writes each season to its own Parquet file under `data/raw/`. These files are the source of truth (the "lake").
 3. **Load, audit, publish:** uploads each file to a Snowflake stage, copies it into a raw table replacing exactly that season's rows, and audits the new rows **before committing**. A bad delivery is rolled back and never becomes visible.
 4. **Validate:** runs Dagster asset checks against each season in Snowflake, such as "no duplicate plays" and "scores are either both present or both missing."
 5. **Transform:** builds staging views and mart tables with dbt on Snowflake. The marts answer questions like:
    - Which offenses and defenses were most efficient by EPA per play each season?
    - Which quarterbacks generated the most value per dropback?
+   - Which quarterbacks were worth their share of the salary cap?
    - How often did home teams cover the spread?
 6. **Orchestrate:** a schedule refreshes the current season every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
 
@@ -83,12 +84,14 @@ flowchart LR
         A1[load_pbp]
         A2[load_schedules]
         A3[load_teams]
+        A4[load_contracts]
     end
 
     subgraph lake["Parquet files, one per season"]
         P1[data/raw/pbp/]
         P2[data/raw/schedules/]
         P3[data/raw/teams.parquet]
+        P4[data/raw/contracts.parquet]
     end
 
     subgraph sf["Snowflake: database NFL"]
@@ -96,22 +99,26 @@ flowchart LR
             B1[PBP]
             B2[SCHEDULES]
             B3[TEAMS]
+            B4[CONTRACTS]
         end
         subgraph staging["STAGING (dbt views)"]
             C1[stg_pbp]
             C2[stg_schedules]
             C3[stg_teams]
+            C4[stg_cap_hits]
         end
         subgraph marts["MARTS (dbt tables)"]
             D1[team_season_epa]
             D2[qb_season_epa]
             D3[game_results_vs_spread]
+            D4[qb_contract_value]
         end
     end
 
     A1 --> P1 -->|PUT + COPY INTO| B1
     A2 --> P2 -->|PUT + COPY INTO| B2
     A3 --> P3 -->|PUT + COPY INTO| B3
+    A4 --> P4 -->|PUT + COPY INTO| B4
     B1 --> C1
     B2 --> C2
     B3 --> C3
@@ -119,6 +126,9 @@ flowchart LR
     C3 --> D1
     C1 --> D2
     C2 --> D3
+    B4 --> C4
+    D2 --> D4
+    C4 --> D4
 ```
 
 Dagster sees all of this as one **asset graph**. The Python assets (`raw_*`) and the dbt models are connected nodes, so lineage, materialization history, and check results can be followed from the nflverse download all the way to the marts.
@@ -170,7 +180,7 @@ nfl-dagster/
 │   ├── snowflake_load.py       # load_parquet(): PUT, COPY INTO, audit, then commit (or roll back)
 │   ├── checks.py               # Partitioned, blocking asset checks on the raw tables
 │   └── assets/
-│       ├── raw.py              # raw_pbp, raw_schedules, raw_teams
+│       ├── raw.py              # raw_pbp, raw_schedules, raw_teams, raw_contracts
 │       └── dbt.py              # dbt models loaded as Dagster assets
 ├── dbt_project/
 │   ├── dbt_project.yml         # Staging → views in STAGING, marts → tables in MARTS
@@ -179,8 +189,9 @@ nfl-dagster/
 │   │   └── generate_schema_name.sql
 │   └── models/
 │       ├── sources.yml         # <database>.RAW tables, mapped to the raw_* Dagster assets
-│       ├── staging/            # stg_pbp, stg_schedules, stg_teams, stg_fourth_downs (+ tests)
-│       └── marts/              # team_season_epa, qb_season_epa, game_results_vs_spread, team_fourth_down (+ tests)
+│       ├── staging/            # stg_pbp, stg_schedules, stg_teams, stg_fourth_downs, stg_cap_hits (+ tests)
+│       └── marts/              # team_season_epa, qb_season_epa, game_results_vs_spread, team_fourth_down, qb_contract_value (+ tests)
+│   ├── seeds/                  # league_salary_caps.csv: the NFL salary cap per season
 │   └── tests/                  # Singular dbt tests (a query that must return no rows)
 ├── tests/                      # No Snowflake needed; runs in CI
 │   ├── test_definitions.py     # Assets, checks, lineage, automation, job, schedule
@@ -191,7 +202,8 @@ nfl-dagster/
     └── raw/
         ├── pbp/season=YYYY.parquet
         ├── schedules/season=YYYY.parquet
-        └── teams.parquet
+        ├── teams.parquet
+        └── contracts.parquet
 ```
 
 ---
@@ -408,6 +420,7 @@ The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/task
 | `raw_pbp` | `RAW.PBP` | By season | `nflreadpy.load_pbp` | About 48k plays and 372 columns per season |
 | `raw_schedules` | `RAW.SCHEDULES` | By season | `nflreadpy.load_schedules` | One row per game, including betting lines |
 | `raw_teams` | `RAW.TEAMS` | No | `nflreadpy.load_teams` | Team names, conferences, divisions, colors |
+| `raw_contracts` | `RAW.CONTRACTS` | No | `nflreadpy.load_contracts` (OverTheCap) | One row per contract. Each player's season-by-season cap history is kept as nested `VARIANT` lists, flattened in staging |
 
 Each asset also writes its Parquet file under `data/raw/` and keeps a copy in the stage `RAW.RAW_STAGE`.
 
@@ -418,6 +431,8 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 | `stg_pbp` | `staging/stg_pbp` | Real plays from scrimmage only (`play_type in ('pass', 'run')`, two-point tries left out), with a single-column `play_key`, and `passer_id` / `passer_name` that include scrambles |
 | `stg_schedules` | `staging/stg_schedules` | Game results and betting lines, plus `is_played` |
 | `stg_teams` | `staging/stg_teams` | Team lookup |
+| `stg_cap_hits` | `staging/stg_cap_hits` | One row per player per season with that season's cap charge (millions of dollars), flattened from the contracts' season history. Career-total rows and entries without a real year are dropped |
+| `league_salary_caps` (seed) | `staging/league_salary_caps` | The league salary cap per season, from a CSV in `dbt_project/seeds/`. A dbt **seed** is reference data that changes once a year and isn't in any source |
 | `stg_fourth_downs` | `staging/stg_fourth_downs` | One row per fourth-down decision: went for it (pass or run, fakes included) or kicked (punt or field goal). Penalties, kneels, and spikes left out. Separate from `stg_pbp`, which keeps only pass and run plays |
 
 ### Marts: `NFL.MARTS` (dbt tables, regular season only)
@@ -425,11 +440,12 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 | Model | Dagster asset | Grain | Key metrics |
 | --- | --- | --- | --- |
 | `team_season_epa` | `marts/team_season_epa` | team × season | Offensive and defensive EPA per play, success rates, net EPA |
-| `qb_season_epa` | `marts/qb_season_epa` | passer × season | Dropbacks, EPA per dropback, success rate, scrambles (minimum 200 dropbacks) |
+| `qb_season_epa` | `marts/qb_season_epa` | passer × season | Dropbacks, EPA per dropback, success rate, scrambles (minimum 200 dropbacks in a finished season, pro-rated while a season is in progress) |
 | `game_results_vs_spread` | `marts/game_results_vs_spread` | game | Final margin vs. the spread, and who covered (home, away, push) |
 | `team_fourth_down` | `marts/team_fourth_down` | team × season | Fourth-and-short (≤ 2 yards) in competitive game states (win probability 10–90%): go-for-it rate and conversion rate |
+| `qb_contract_value` | `marts/qb_contract_value` | passer × season | Cap hit, cap share, and EPA per dropback over what QBs paid that share usually produce (`epa_over_expected`, `worth_it`) |
 
-**EPA (Expected Points Added)** measures how much a play changed a team's expected points. It's the standard way to measure efficiency in NFL analytics. **Success rate** is the share of plays with EPA above zero. **Net EPA** is offensive EPA per play minus EPA allowed per play.
+**EPA (Expected Points Added)** measures how much a play changed a team's expected points. It's the standard way to measure efficiency in NFL analytics. **Success rate** is the share of plays with EPA above zero. **Net EPA** is offensive EPA per play minus EPA allowed per play. **Cap share** is a player's cap hit divided by that season's league salary cap. **EPA over expected** is a QB's EPA per dropback minus what QBs paid the same cap share usually produce: a straight line fitted through every finished QB season since 2015.
 
 ---
 
@@ -441,6 +457,13 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 </picture>
 
 Charts are drawn from the marts by [`scripts/make_charts.py`](scripts/make_charts.py) (`NFL_ENV=prod python scripts/make_charts.py`), in light and dark versions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/qb_contract_value_2025-dark.png">
+  <img alt="Scatter plot of 38 quarterbacks in 2025: share of the salary cap against EPA per dropback, with the expected line rising from 0 at no cap to about 0.15 at 20% of the cap. Drake Maye (3.0% of the cap, 0.316) is furthest above the line; Geno Smith (14.3%, -0.130) is furthest below it among well-paid QBs." src="docs/images/qb_contract_value_2025-light.png">
+</picture>
+
+**Who was worth the money** (`qb_contract_value`): paying a QB more does buy performance, but weakly. Across 393 finished QB seasons since 2015, each 1% of the cap is worth about +0.007 EPA per dropback (correlation 0.29). The best values since 2015 were Lamar Jackson in 2019 (+0.36 over expected) and Patrick Mahomes in 2018 (+0.34), both MVP seasons on rookie contracts. In 2025, Drake Maye produced +0.30 over expected at 3.0% of the cap; among QBs paid over 10% of the cap, Jordan Love (+0.18) gave the most and Geno Smith (-0.23) the least.
 
 From the 2025 regular season:
 
@@ -544,6 +567,10 @@ Snowflake can instead add new columns on its own (`ENABLE_SCHEMA_EVOLUTION = TRU
 **Single-column keys in the marts** (`team_season_key`, `qb_season_key`), so plain dbt `unique` tests work without extra packages.
 
 **Two-point tries aren't plays.** nflverse logs a two-point try as a pass or run, so it used to count toward EPA per play and per dropback (1,410 tries since 2015). It's left out of `stg_pbp` now, because it isn't a down: it's an untimed, all-or-nothing snap from the 2 after a touchdown, and teams that score more touchdowns get more of them. Official passing stats leave them out for the same reason. It's a definition choice, not a bug fix, so I measured it before deciding: a QB's EPA per dropback moved by 0.002 at the median and 0.018 at most, a few close QBs swapped places, and one QB-season (Beathard 2018, exactly 200 dropbacks) fell below the cutoff. Small, but the contract-value mart will rank close QBs against each other, so a play has to mean the same thing for everyone. A dbt unit test (`keeps_scrimmage_plays_only`) keeps the rule in place.
+
+**Nested contract history stays nested in raw.** Each contract row carries the player's whole season-by-season cap history as a list of structs, repeated on every one of that player's contract rows. `raw_contracts` loads it as it is (`INFER_SCHEMA` makes it `VARIANT`), and `stg_cap_hits` flattens it with `LATERAL FLATTEN`, after keeping one row per player. Flattening in Python would have copied each history once per contract and hidden a modeling decision in load code. A dbt test checks the outcome: flattening every contract row must give exactly the player-seasons `stg_cap_hits` has.
+
+**"Worth it" is defined before it's ranked.** `qb_contract_value` compares each QB with what QBs paid the same share of the cap usually produce (a line fitted on finished seasons), rather than dividing EPA by salary. Both were measured first: EPA divided by cap share put any cheap QB on top (Nick Mullens 2018, 0.107 EPA per dropback, ranked 3rd) and is undefined for a $0 cap hit. The season in progress is included and flagged: after five weeks, a QB's EPA per dropback correlates 0.60 with his final number, which is already better than his whole previous season does (0.39). Two source limits are documented next to the SQL: OverTheCap keeps one team per season, so the 5 QBs released or traded mid-season get no score, and a few QBs have no cap row.
 
 **QB stats grouped by `passer_id`, not name.** Abbreviated names like `J.Daniels` belong to several players. `passer` / `passer_id` also include scrambles, which `passer_player_name` doesn't.
 
@@ -663,7 +690,7 @@ Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagst
 
 NFL data is provided by [nflverse](https://github.com/nflverse) and accessed through [nflreadpy](https://github.com/nflverse/nflreadpy). Thanks to the nflverse maintainers and contributors for making this data openly available.
 
-Most nflverse datasets are released under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/), and some have different terms. Check the [nflverse data documentation](https://github.com/nflverse/nflverse-data) for the license of each dataset. This repository does not redistribute any data; it downloads it at runtime.
+Most nflverse datasets are released under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/), and some have different terms. Check the [nflverse data documentation](https://github.com/nflverse/nflverse-data) for the license of each dataset. Contract data comes from [OverTheCap](https://overthecap.com), redistributed by nflverse (`load_contracts`). This repository does not redistribute any data; it downloads it at runtime.
 
 This project is not affiliated with or endorsed by the NFL or nflverse.
 

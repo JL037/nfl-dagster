@@ -14,7 +14,7 @@
 --
 -- epa_over_expected = epa_per_dropback - expected_epa_per_dropback.
 -- worth_it = epa_over_expected > 0: he played better than QBs paid the same usually play.
---   Top seasons: Lamar Jackson 2019 (+0.36) and Patrick Mahomes 2018 (+0.35), both MVPs on
+--   Top seasons: Lamar Jackson 2019 (+0.36) and Patrick Mahomes 2018 (+0.34), both MVPs on
 --   rookie deals; Brock Purdy 2023; Drake Maye 2025 (+0.30).
 --   Rejected: EPA / cap share. It ranks any cheap QB at the top (Nick Mullens 2018, 0.107
 --   EPA per dropback, ranked 3rd), is undefined at a $0 cap hit, and runs backwards when

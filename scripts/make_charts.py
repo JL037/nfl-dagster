@@ -50,6 +50,26 @@ QB_SQL = f"""
     limit 10
 """
 
+CONTRACT_VALUE_SQL = f"""
+    select passer_name, cap_share, epa_per_dropback, expected_epa_per_dropback
+    from {SNOWFLAKE_DATABASE}.marts.qb_contract_value
+    where season = %s and is_cap_hit_for_team
+    order by cap_share
+"""
+
+# Direct labels for the QBs that tell the story, not every dot: the best values, paid and
+# producing, the most expensive, and the worst values. Offsets (points) keep labels clear
+# of neighbouring dots.
+CONTRACT_VALUE_LABELS = {
+    "D.Maye": (8, 6),
+    "B.Purdy": (8, -4),
+    "J.Love": (-10, 8),
+    "M.Stafford": (-14, 8),
+    "D.Prescott": (8, 0),
+    "G.Smith": (-10, -14),
+    "S.Sanders": (8, 4),
+}
+
 
 def query(sql: str, params: tuple = ()) -> list[tuple]:
     # Values go in as bound parameters (%s), never into the SQL text; only the database
@@ -170,15 +190,67 @@ def qb_chart(rows: list[tuple], t: dict, path: Path) -> None:
     plt.close(fig)
 
 
+def contract_value_chart(rows: list[tuple], t: dict, path: Path) -> None:
+    names = [n for n, _, _, _ in rows]
+    shares = [100 * float(c) for _, c, _, _ in rows]  # percent of the league cap
+    epa = [float(e) for _, _, e, _ in rows]
+    expected = [float(x) for _, _, _, x in rows]
+
+    fig, ax = plt.subplots(figsize=(8, 5.2), dpi=200)
+    fig.patch.set_facecolor(t["surface"])
+    fig.subplots_adjust(left=0.1, right=0.95, top=0.79, bottom=0.16)
+    style_axes(ax, t, "both")
+
+    # The expected line: what QBs paid each share of the cap usually produce. Every row's
+    # expected value sits on it, so the first and last rows (sorted by cap share) give it.
+    x_max = 22  # room right of the most expensive QB for his label; ticks stop at 20%
+    slope = (expected[-1] - expected[0]) / (shares[-1] - shares[0])
+    line_x = [0, x_max]
+    line_y = [expected[0] + slope * (x - shares[0]) for x in line_x]
+    ax.plot(line_x, line_y, color=t["muted"], linewidth=1.5, zorder=1)
+    # Label the line where it runs through empty space, below it, clear of the dots.
+    label_x = 8
+    ax.annotate("Expected for the money", (label_x, line_y[0] + slope * label_x), xytext=(0, -14),
+                textcoords="offset points", ha="center", color=t["secondary"], fontsize=9)
+
+    ax.scatter(shares, epa, s=55, color=t["series"], edgecolors=t["surface"], linewidths=1.5, zorder=3)
+    for name, x, y in zip(names, shares, epa):
+        if name in CONTRACT_VALUE_LABELS:
+            dx, dy = CONTRACT_VALUE_LABELS[name]
+            ax.annotate(name, (x, y), xytext=(dx, dy), textcoords="offset points",
+                        ha="left" if dx >= 0 else "right", va="center",
+                        color=t["text"], fontsize=9.5, fontweight="bold")
+
+    ax.set_xlim(0, x_max)
+    ax.set_xticks([0, 5, 10, 15, 20])
+    ax.set_xticklabels(["0%", "5%", "10%", "15%", "20%"])
+    ax.set_xlabel("Cap hit as a share of the league salary cap", color=t["secondary"], fontsize=10)
+    ax.set_ylim(-0.3, 0.4)
+    ax.set_yticks([-0.2, 0, 0.2, 0.4])
+    ax.set_yticklabels(["-0.2", "0", "0.2", "0.4"])
+
+    titles(
+        fig, t,
+        f"Which quarterbacks were worth the money, {LAST_FULL_SEASON}",
+        "EPA per dropback against share of the cap. Above the line: better than QBs paid the same usually play",
+        f"Regular season {LAST_FULL_SEASON}, {len(rows)} QBs; line fitted on 2015–{LAST_FULL_SEASON}. "
+        "Source: nflverse, OverTheCap; mart qb_contract_value.",
+    )
+    fig.savefig(path, facecolor=t["surface"])
+    plt.close(fig)
+
+
 def main() -> None:
     load_dotenv()
     OUT.mkdir(parents=True, exist_ok=True)
     fourth_down = query(FOURTH_DOWN_SQL, (LAST_FULL_SEASON,))
     qbs = query(QB_SQL, (LAST_FULL_SEASON,))
+    contract_value = query(CONTRACT_VALUE_SQL, (LAST_FULL_SEASON,))
     plt.rcParams["font.family"] = "DejaVu Sans"
     for mode, t in THEMES.items():
         fourth_down_chart(fourth_down, t, OUT / f"fourth_down_trend-{mode}.png")
         qb_chart(qbs, t, OUT / f"qb_epa_{LAST_FULL_SEASON}-{mode}.png")
+        contract_value_chart(contract_value, t, OUT / f"qb_contract_value_{LAST_FULL_SEASON}-{mode}.png")
     print(f"Wrote charts from {SNOWFLAKE_DATABASE} (NFL_ENV={os.getenv('NFL_ENV', 'dev')}) to {OUT}")
 
 
