@@ -18,10 +18,12 @@ DBT_ASSETS = {
     "staging/stg_teams",
     "staging/stg_fourth_downs",
     "staging/stg_cap_hits",
+    "staging/league_salary_caps",
     "marts/team_season_epa",
     "marts/qb_season_epa",
     "marts/game_results_vs_spread",
     "marts/team_fourth_down",
+    "marts/qb_contract_value",
 }
 
 
@@ -45,7 +47,7 @@ def test_checks(asset_graph):
     # The rest are dbt tests (schema tests and singular tests in dbt_project/tests/),
     # which dagster-dbt turns into asset checks.
     # dbt unit tests (unit_tests: in the YAML) are not asset checks; they run inside dbt build.
-    assert len(checks) == 37
+    assert len(checks) == 45
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -53,6 +55,9 @@ def test_checks(asset_graph):
     # Reads raw.contracts and stg_cap_hits; its meta.dagster.ref picks which asset owns it.
     assert dg.AssetCheckKey(
         dg.AssetKey(["staging", "stg_cap_hits"]), "assert_cap_hits_keep_every_season"
+    ) in checks
+    assert dg.AssetCheckKey(
+        dg.AssetKey(["marts", "qb_contract_value"]), "assert_qb_contract_value_keeps_every_qb_season"
     ) in checks
 
 
@@ -64,8 +69,18 @@ def test_checks(asset_graph):
         ("staging/stg_schedules", {"raw_schedules"}),
         ("staging/stg_teams", {"raw_teams"}),
         ("staging/stg_cap_hits", {"raw_contracts"}),
+        (
+            "marts/qb_contract_value",
+            {
+                "marts/qb_season_epa",
+                "staging/stg_cap_hits",
+                "staging/league_salary_caps",
+                "staging/stg_teams",
+            },
+        ),
         ("marts/team_season_epa", {"staging/stg_pbp", "staging/stg_teams"}),
-        ("marts/qb_season_epa", {"staging/stg_pbp"}),
+        # stg_schedules: how much of the season is played, for the pro-rated dropback minimum.
+        ("marts/qb_season_epa", {"staging/stg_pbp", "staging/stg_schedules"}),
         ("marts/game_results_vs_spread", {"staging/stg_schedules"}),
         ("staging/stg_fourth_downs", {"raw_pbp"}),
         ("marts/team_fourth_down", {"staging/stg_fourth_downs", "staging/stg_teams"}),

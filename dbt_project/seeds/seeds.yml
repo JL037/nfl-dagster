@@ -1,0 +1,21 @@
+version: 2
+
+seeds:
+  - name: league_salary_caps
+    description: >
+      The NFL salary cap per team for each league year, in millions of dollars, as announced
+      by the league (nfl.com; 2026: $301.2M, the first cap over $300M). Add a row each
+      February when the next season's cap is set; qb_contract_value has no cap share for a
+      season that's missing here.
+    config:
+      column_types:
+        season: integer
+        salary_cap_millions: number(6, 2)
+    columns:
+      - name: season
+        data_tests:
+          - unique
+          - not_null
+      - name: salary_cap_millions
+        data_tests:
+          - not_null
