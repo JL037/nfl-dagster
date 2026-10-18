@@ -33,3 +33,12 @@ models:
       +meta:
         dagster:
           group: marts
+
+# Seeds are small CSVs in seeds/ that dbt loads as tables: reference data that changes once
+# a year and isn't in any source, like the league salary cap.
+seeds:
+  nfl:
+    +schema: staging
+    +meta:
+      dagster:
+        group: staging

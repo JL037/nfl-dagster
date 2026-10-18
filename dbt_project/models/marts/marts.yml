@@ -15,13 +15,44 @@ models:
           - not_null
 
   - name: qb_season_epa
-    description: QB EPA per dropback and success rate per regular season, minimum 200 dropbacks.
+    description: >
+      QB EPA per dropback and success rate per regular season, minimum 200 dropbacks in a
+      finished season (pro-rated while a season is in progress).
     columns:
       - name: qb_season_key
         description: passer_id and season joined.
         data_tests:
           - unique
           - not_null
+
+  - name: qb_contract_value
+    description: >
+      Every QB season from qb_season_epa with its cap hit, its share of the league salary cap,
+      and epa_over_expected: EPA per dropback above what QBs paid that share usually produce.
+      Definitions and their measured effect are in the SQL.
+    columns:
+      - name: qb_season_key
+        description: passer_id and season joined, the same key as qb_season_epa.
+        data_tests:
+          - unique
+          - not_null
+      - name: cap_share
+        description: cap_number / the league salary cap that season. Null without a cap hit.
+      - name: is_cap_hit_for_team
+        description: >
+          False when OverTheCap's team for the season isn't the team he played for (released
+          or traded mid-season), or there's no cap hit. Those rows get no score.
+        data_tests:
+          - not_null
+      - name: expected_epa_per_dropback
+        description: The fitted line at this cap_share (fitted on finished seasons only).
+        data_tests:
+          # Every row with a cap hit for his team must get a score.
+          - not_null:
+              config:
+                where: "is_cap_hit_for_team"
+      - name: worth_it
+        description: True when epa_over_expected > 0. Null for rows without a score.
 
   - name: game_results_vs_spread
     description: Played games and whether the home or away team covered the spread.
@@ -91,3 +122,48 @@ unit_tests:
         - {game_id: away_covers, home_cover_margin: -4, ats_winner: LV, ats_result: away}
         - {game_id: push, home_cover_margin: 0, ats_winner: PUSH, ats_result: push}
         - {game_id: no_spread, home_cover_margin: null, ats_winner: null, ats_result: null}
+
+  - name: contract_value_scores_against_finished_seasons
+    description: >
+      The expected line is fitted on finished seasons with a cap hit for the QB's own team,
+      then applied to every scored row. Here the two finished, scored rows (cap share 0.25,
+      EPA 0; cap share 0.75, EPA 0.5) give the line EPA = cap_share - 0.25. The in-progress
+      2026 row and the Vikings row (cap hit from the team he ended with, not the Giants he
+      played for) must not move the line; if either did, every expected value would change.
+      Washington's old name ('Redskins') still matches WAS. A row exactly on the line is not
+      worth it. No cap row means no score.
+    model: qb_contract_value
+    given:
+      - input: ref('qb_season_epa')
+        rows:
+          - {qb_season_key: cheap-2024, season: 2024, passer_id: P1, team: NE, epa_per_dropback: 0.0, is_season_complete: true}
+          - {qb_season_key: paid-2024, season: 2024, passer_id: P2, team: KC, epa_per_dropback: 0.5, is_season_complete: true}
+          - {qb_season_key: on_line-2024, season: 2024, passer_id: P3, team: WAS, epa_per_dropback: 0.25, is_season_complete: true}
+          - {qb_season_key: moved-2024, season: 2024, passer_id: P4, team: NYG, epa_per_dropback: 0.9, is_season_complete: true}
+          - {qb_season_key: no_cap-2024, season: 2024, passer_id: P5, team: NE, epa_per_dropback: 0.1, is_season_complete: true}
+          - {qb_season_key: early-2026, season: 2026, passer_id: P1, team: NE, epa_per_dropback: 0.9, is_season_complete: false}
+      - input: ref('stg_cap_hits')
+        rows:
+          - {gsis_id: P1, season: 2024, cap_number: 25, team_name: Patriots}
+          - {gsis_id: P2, season: 2024, cap_number: 75, team_name: Chiefs}
+          - {gsis_id: P3, season: 2024, cap_number: 50, team_name: Redskins}
+          - {gsis_id: P4, season: 2024, cap_number: 0, team_name: Vikings}
+          - {gsis_id: P1, season: 2026, cap_number: 50, team_name: Patriots}
+      - input: ref('league_salary_caps')
+        rows:
+          - {season: 2024, salary_cap_millions: 100}
+          - {season: 2026, salary_cap_millions: 100}
+      - input: ref('stg_teams')
+        rows:
+          - {team_abbr: NE, team_nick: Patriots}
+          - {team_abbr: KC, team_nick: Chiefs}
+          - {team_abbr: WAS, team_nick: Commanders}
+          - {team_abbr: NYG, team_nick: Giants}
+    expect:
+      rows:
+        - {qb_season_key: cheap-2024, is_cap_hit_for_team: true, expected_epa_per_dropback: 0.0, epa_over_expected: 0.0, worth_it: false}
+        - {qb_season_key: paid-2024, is_cap_hit_for_team: true, expected_epa_per_dropback: 0.5, epa_over_expected: 0.0, worth_it: false}
+        - {qb_season_key: on_line-2024, is_cap_hit_for_team: true, expected_epa_per_dropback: 0.25, epa_over_expected: 0.0, worth_it: false}
+        - {qb_season_key: moved-2024, is_cap_hit_for_team: false, expected_epa_per_dropback: null, epa_over_expected: null, worth_it: null}
+        - {qb_season_key: no_cap-2024, is_cap_hit_for_team: false, expected_epa_per_dropback: null, epa_over_expected: null, worth_it: null}
+        - {qb_season_key: early-2026, is_cap_hit_for_team: true, expected_epa_per_dropback: 0.25, epa_over_expected: 0.65, worth_it: true}
