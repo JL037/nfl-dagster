@@ -391,7 +391,7 @@ The dbt project has two kinds of tests. **Data tests** (`unique`, `not_null`, `a
 
 ### Code rules (Taskless)
 
-Some of this project's guarantees are conventions in the code, and nothing in the tests above would notice if a new file broke one. Four rules in [`.taskless/rules/sg/`](.taskless/rules/sg/) check them on every pull request ([Taskless](https://taskless.io), running [ast-grep](https://ast-grep.github.io) patterns over the Python):
+Some of this project's guarantees are conventions in the code, and nothing in the tests above would notice if a new file broke one. Five rules check them on every pull request ([Taskless](https://taskless.io)): four in [`.taskless/rules/sg/`](.taskless/rules/sg/) run [ast-grep](https://ast-grep.github.io) patterns over the Python, and one in [`.taskless/rules/vale/`](.taskless/rules/vale/) runs a [Vale](https://vale.sh) pattern over the dbt SQL:
 
 | Rule | What it protects |
 | --- | --- |
@@ -399,6 +399,7 @@ Some of this project's guarantees are conventions in the code, and nothing in th
 | `asset-checks-are-blocking` | The dbt automation gate only looks at blocking checks, so a non-blocking check could fail while the marts rebuild from bad data |
 | `no-hardcoded-nfl-database` | `NFL_ENV` chooses the database in one place. A hard-coded `NFL` or `NFL_DEV` elsewhere is wrong in the other environment |
 | `sql-where-values-are-bound` | Values in a `WHERE` clause are bound parameters (`%s`), never pasted into the SQL text. Identifiers like table names, which SQL can't bind, are allowed |
+| `variant-casts-use-try` | A VARIANT field is converted with `try_to_number` / `try_to_double`, not `::int` or `::float`. Snowflake may convert before the `WHERE` that filters bad values out, so one bad value fails the query, and only for some query shapes ([the bug it came from](dbt_project/models/staging/stg_cap_hits.sql)) |
 
 When they were added, the rules found three real problems, all fixed in the same change: the raw assets labeled dev loads as `NFL.RAW.<table>` in the UI, and two chart queries put the season into the SQL text. Each rule has its own passing and failing test cases under `.tests/`, and its `note` explains the reason and the fix.
 
@@ -407,7 +408,7 @@ nvm use
 npx @taskless/cli@0.13.0 check
 ```
 
-The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/taskless.yml), on the files a pull request changes. No Taskless account is needed. AI coding agents load the rules through the skill in `.claude/skills/taskless/`, so they follow the rules while writing code, not only when CI catches them. SQL files aren't covered: neither engine parses SQL, so the dbt models rely on dbt tests.
+The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/taskless.yml), on the files a pull request changes. No Taskless account is needed. AI coding agents load the rules through the skill in `.claude/skills/taskless/`, so they follow the rules while writing code, not only when CI catches them. ast-grep can't parse SQL, so the one SQL rule is a Vale rule: Vale reads `.sql` as plain text, which suits a short, distinctive pattern like a cast. Anything that needs SQL structure is left to dbt tests.
 
 ---
 

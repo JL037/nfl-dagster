@@ -34,13 +34,17 @@ select
     -- See tests/assert_cap_hits_can_filter_on_season.sql.
     try_to_number(season.value:year::string) as season,
     -- Team nickname as OverTheCap writes it ("Patriots"), not the abbreviation.
+    -- The amounts below use try_to_double for the same reason as season: one non-numeric
+    -- value would otherwise fail every query on this view (Taskless rule
+    -- variant-casts-use-try). Reading the text also gives cap_percent the value OverTheCap
+    -- published (0.112, not 0.11199999999999999); every other amount is identical.
     nullif(season.value:team::string, '') as team_name,
-    season.value:cap_number::float as cap_number,
-    season.value:cap_percent::float as cap_percent,
-    season.value:base_salary::float as base_salary,
-    season.value:prorated_bonus::float as prorated_bonus,
-    season.value:guaranteed_salary::float as guaranteed_salary,
-    season.value:cash_paid::float as cash_paid
+    try_to_double(season.value:cap_number::string) as cap_number,
+    try_to_double(season.value:cap_percent::string) as cap_percent,
+    try_to_double(season.value:base_salary::string) as base_salary,
+    try_to_double(season.value:prorated_bonus::string) as prorated_bonus,
+    try_to_double(season.value:guaranteed_salary::string) as guaranteed_salary,
+    try_to_double(season.value:cash_paid::string) as cash_paid
 from players,
     lateral flatten(input => players.season_history) as season
 -- Real seasons only. Each list also ends with a 'Total' row (the career sum: keeping it

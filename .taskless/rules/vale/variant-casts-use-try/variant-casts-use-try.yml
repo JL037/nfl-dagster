@@ -1,0 +1,11 @@
+# A VARIANT path (value:year, src:a.b) cast with :: to a type that can fail on bad input.
+# Snowflake doesn't promise to apply a model's WHERE before the casts in its SELECT: when a
+# query filters or groups on the column, the optimizer may cast every row first. In
+# stg_cap_hits, season.value:year::int hit OverTheCap's 'Total' rows and failed with
+# "Failed to cast variant value "Total" to FIXED", only for queries shaped a certain way.
+# try_to_* returns null instead of failing; casts to string (::string, ::varchar) can't fail.
+extends: existence
+message: "'%s' casts a VARIANT field with '::', which fails the whole query on one bad value. Use try_to_number / try_to_double / try_to_date / try_to_boolean on the field cast to ::string."
+level: error
+raw:
+  - '(?i)\b[a-z_][\w.]*:[a-z_"][\w."\[\]]*::(int|integer|bigint|smallint|tinyint|number|numeric|decimal|float|float4|float8|double|real|date|time|timestamp\w*|boolean)\b'
