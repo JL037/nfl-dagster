@@ -33,6 +33,7 @@ from sqlglot import exp
 from markupsafe import Markup
 
 from nfl_ask.agent import AskResult
+from nfl_ask.pricing import haiku_cost
 from nfl_ask.web.charts import render_chart
 from nfl_ask.web.present import data_table, mart_docs, mart_name, notes_for
 
@@ -50,6 +51,9 @@ LOADING_LINES = ["Reviewing the tape…", "Checking the cap sheet…", "Running 
                  "Asking the film room…", "Counting dropbacks…"]
 
 log = logging.getLogger(__name__)
+# uvicorn's own logger, so the line shows in the server output. Tokens and cost only: never the
+# question, the answer or anything else about the visitor.
+usage_log = logging.getLogger("uvicorn.error")
 
 
 def tables_read(sql: str) -> list[str]:
@@ -144,6 +148,10 @@ def create_app(
             # Never the message or a traceback: either could carry the question.
             log.warning("answering failed: %s", type(e).__name__)
             return fragment({"notice": "Something went wrong answering that. Please try again."})
+        u = result.usage
+        usage_log.info("answer status=%s queries=%d tokens in=%d out=%d cache_read=%d cache_write=%d cost=$%.5f",
+                       result.status, len(result.queries), u.get("input_tokens", 0), u.get("output_tokens", 0),
+                       u.get("cache_read_input_tokens", 0), u.get("cache_creation_input_tokens", 0), haiku_cost(u))
 
         return fragment({"question": question, "result": result, "asked_on": day(datetime.now(PACIFIC)),
                          **answer_view(result, published())})

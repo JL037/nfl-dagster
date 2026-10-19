@@ -204,3 +204,13 @@ def test_the_page_loads_its_own_script_and_a_print_layout():
     assert "@media print" in css
     js = c.get("/static/app.js").text
     assert "window.print()" in js
+
+
+def test_each_answer_logs_its_cost_but_never_the_question(caplog):
+    caplog.set_level(logging.INFO)
+    result = answered()
+    result.usage = {"input_tokens": 12000, "output_tokens": 900, "cache_read_input_tokens": 3000,
+                    "cache_creation_input_tokens": 0}
+    client(FakeAsk(result)).post("/answer", data={"question": SECRET_QUESTION})
+    assert "cost=$0.00168" in caplog.text  # 12000*0.10 + 900*0.50 + 3000*0.01 per million
+    assert "4f9c" not in caplog.text
