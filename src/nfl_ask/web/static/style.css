@@ -1,0 +1,149 @@
+/* Fun but bland: one calm column, system fonts, one accent (the chart blue).
+   Chart colors are the dataviz reference palette, checked with its validator in both modes:
+   series slots blue, orange, aqua; blue/red for values above and below zero. */
+:root {
+  color-scheme: light;
+  --bg: #f9f9f7; --surface: #fcfcfb; --fg: #0b0b0b; --fg-2: #52514e; --muted: #898781;
+  --line: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10); --code: #f1f0ec;
+  --accent: #2a78d6; --accent-fg: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --pos: #2a78d6; --neg: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #0d0d0d; --surface: #1a1a19; --fg: #f0efec; --fg-2: #c3c2b7; --muted: #898781;
+    --line: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10); --code: #232321;
+    --accent: #3987e5; --accent-fg: #0b0b0b;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --pos: #3987e5; --neg: #e66767;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+.lede { color: var(--fg-2); margin: 0 0 28px; }
+
+/* Asking */
+.ask { display: flex; gap: 8px; }
+.ask textarea { flex: 1; font: inherit; padding: 12px 14px; border: 1px solid var(--border);
+                border-radius: 12px; background: var(--surface); color: var(--fg); resize: vertical; }
+.ask textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { font: inherit; cursor: pointer; border-radius: 10px; }
+.ask button { padding: 0 24px; border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+button:disabled { opacity: 0.6; cursor: wait; }
+.examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 0;
+            color: var(--muted); font-size: 0.9rem; }
+.examples button { padding: 5px 12px; border: 1px solid var(--border); background: transparent;
+                   color: var(--fg); font-size: 0.9rem; }
+.examples button:hover { border-color: var(--accent); }
+.htmx-indicator { display: none; color: var(--fg-2); font-style: italic; margin: 28px 0 0; }
+.htmx-request.htmx-indicator { display: block; }
+
+/* The answer */
+#answer { margin-top: 28px; }
+.result { background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+          padding: 24px 28px 28px; }
+.answer-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.asked { color: var(--muted); font-size: 0.9rem; margin: 0 0 8px; }
+.pdf { flex: none; padding: 5px 12px; border: 1px solid var(--border); background: transparent;
+       color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+.pdf:hover { border-color: var(--accent); }
+.print-only { display: none; }
+.headline { font-size: 1.5rem; line-height: 1.3; margin: 0 0 10px; font-weight: 650; letter-spacing: -0.01em; }
+.explanation { color: var(--fg-2); margin: 0; font-size: 1.05rem; }
+.no_data .headline { font-size: 1.25rem; }
+.notice { color: var(--fg-2); }
+.notice.limited, .notice.error { background: var(--surface); border: 1px solid var(--border);
+                                 border-radius: 12px; padding: 14px 18px; color: var(--fg); }
+.notice.error { border-color: var(--neg); }
+
+.chart-card { margin: 24px 0 0; padding: 16px 12px 8px; border-top: 1px solid var(--line); }
+.chart-card figcaption { font-weight: 600; margin: 0 4px 8px; }
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { stroke: var(--axis); stroke-width: 1; }
+.chart .tick, .chart .axis-title { fill: var(--muted); font-size: 11px; }
+.chart .axis-title { fill: var(--fg-2); }
+.chart .label { fill: var(--fg-2); font-size: 12px; }
+.chart .value { fill: var(--fg); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart .bar.pos { fill: var(--pos); }
+.chart .bar.neg { fill: var(--neg); }
+.chart .bar:hover, .chart .dot:hover { opacity: 0.8; }
+.chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { stroke: var(--surface); stroke-width: 2; }
+.chart .s1 { stroke: var(--s1); } .chart .dot.s1, .chart circle.key.s1 { fill: var(--s1); }
+.chart .s2 { stroke: var(--s2); } .chart .dot.s2, .chart circle.key.s2 { fill: var(--s2); }
+.chart .s3 { stroke: var(--s3); } .chart .dot.s3, .chart circle.key.s3 { fill: var(--s3); }
+.chart line.key { stroke-width: 2; }
+
+h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+     margin: 28px 0 10px; font-weight: 650; }
+.data, .sources { border-top: 1px solid var(--line); margin-top: 24px; }
+.table-from, .table-note { color: var(--muted); font-size: 0.85rem; margin: 8px 0; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--fg-2); font-weight: 600; font-size: 0.8rem; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:last-child td { border-bottom: 0; }
+
+.mart h4 { margin: 0 0 4px; font-size: 1rem; }
+.mart .published { color: var(--muted); font-weight: 400; font-size: 0.85rem; margin-left: 6px; }
+.mart p { margin: 0 0 8px; color: var(--fg-2); font-size: 0.95rem; }
+.mart dl { margin: 0 0 12px; font-size: 0.9rem; }
+.mart dt { font-weight: 600; margin-top: 6px; }
+.mart dd { margin: 0; color: var(--fg-2); }
+.credits { color: var(--muted); font-size: 0.85rem; margin: 12px 0; }
+.credits a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); }
+.credits a:hover { color: var(--accent); }
+details.sql summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 0.9rem; }
+.step { margin-top: 12px; }
+pre { background: var(--code); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0;
+      font-size: 0.82rem; white-space: pre-wrap; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.params, .sources-line { font-size: 0.85rem; color: var(--muted); margin: 6px 0 0; }
+
+footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; }
+footer p { margin: 4px 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                   clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) {
+  .result { padding: 18px 16px 20px; }
+  .headline { font-size: 1.3rem; }
+  .ask { flex-direction: column; }
+  .ask button { padding: 12px; }
+}
+
+/* Download PDF: the print layout. Just the answer, its chart, data and sources, in light colors,
+   with every table column on the page (wrapped, not scrolled) and the SQL expanded (app.js). */
+@media print {
+  :root:root {
+    color-scheme: light;
+    --bg: #ffffff; --surface: #ffffff; --fg: #0b0b0b; --fg-2: #52514e; --muted: #6f6e69;
+    --line: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10); --code: #f4f3ef;
+    --accent: #2a78d6; --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --pos: #2a78d6; --neg: #e34948;
+  }
+  @page { margin: 14mm 14mm 16mm; }
+  body { background: #fff; font-size: 10.5pt; }
+  main { max-width: none; padding: 0; }
+  main > header, .ask, .examples, #loading, footer, .pdf { display: none !important; }
+  #answer { margin: 0; }
+  .result { border: 0; padding: 0; }
+  .print-only { display: block; }
+  .print-head { color: var(--muted); font-size: 9pt; margin: 0 0 6mm; padding-bottom: 2mm;
+                border-bottom: 1px solid var(--line); }
+  .asked { font-size: 10pt; }
+  .headline { font-size: 16pt; }
+  .explanation { font-size: 11pt; }
+  .table-wrap { overflow: visible; }
+  table { font-size: 8.5pt; }
+  th, td { white-space: normal; padding: 3px 5px; }
+  .chart-card, .mart, tr, .step { break-inside: avoid; }
+  h3 { break-after: avoid; }
+  details.sql summary { color: var(--fg); list-style: none; }
+  pre { font-size: 7.5pt; }
+  /* A PDF can't be clicked: print where each credit links to. */
+  .credits a[href]::after { content: " (" attr(href) ")"; font-size: 7.5pt; }
+}

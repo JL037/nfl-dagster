@@ -1,0 +1,78 @@
+{% if notice %}
+<p class="notice{% if retry_after %} limited{% endif %}"{% if retry_after %} data-retry-after="{{ retry_after }}"{% endif %} role="status">{{ notice }}</p>
+{% elif result.status != "answered" %}
+<article class="result no_data">
+  <p class="asked">{{ question }}</p>
+  <h2 class="headline">{{ result.text }}</h2>
+  <p class="explanation">Try asking about QB value and contracts, QB or team EPA, fourth-down
+    decisions, or results against the spread, for the 2015 season on.</p>
+</article>
+{% else %}
+<article class="result answered">
+  <p class="print-only print-head">NFL money question · answered {{ asked_on }}</p>
+  <div class="answer-top">
+    <p class="asked">{{ question }}</p>
+    <button type="button" class="pdf" data-pdf data-title="NFL answer – {{ question }}">Download PDF</button>
+  </div>
+  <h2 class="headline">{{ result.headline or result.text }}</h2>
+  {% if result.explanation %}<p class="explanation">{{ result.explanation }}</p>{% endif %}
+
+  {% if chart %}
+  <figure class="chart-card">
+    <figcaption>{{ result.chart.title }}</figcaption>
+    {{ chart }}
+  </figure>
+  {% endif %}
+
+  {% if tables %}
+  <section class="data">
+    <h3>The data</h3>
+    {% for table in tables %}
+    {% if tables | length > 1 %}<p class="table-from">From {{ table.from | join(", ") }}</p>{% endif %}
+    {% if table.constants %}<p class="table-note">All rows: {% for label, value in table.constants %}{{ label }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for label in table.labels %}<th{% if table.numeric[loop.index0] %} class="num"{% endif %}>{{ label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in table.rows %}
+          <tr>{% for cell in row %}<td{% if table.numeric[loop.index0] %} class="num"{% endif %}>{{ cell }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if table.hidden %}<p class="table-note">and {{ table.hidden }} more rows.</p>{% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if marts %}
+  <section class="sources">
+    <h3>Where this comes from</h3>
+    {% for mart in marts %}
+    <div class="mart">
+      <h4>{{ mart.name }}{% if mart.published %} <span class="published">published {{ mart.published | day }}</span>{% endif %}</h4>
+      {% if mart.description %}<p>{{ mart.description }}</p>{% endif %}
+      {% if mart.notes %}
+      <dl>{% for label, note in mart.notes %}<dt>{{ label }}</dt><dd>{{ note }}</dd>{% endfor %}</dl>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if sources %}
+    <p class="credits">Data: {% for s in sources %}{% if s.url %}<a href="{{ s.url }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}{% if s.note %} ({{ s.note }}){% endif %}{% if s.license %}, <a href="{{ s.license[1] }}">{{ s.license[0] }}</a>{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.
+      We aggregate and transform it (Snowflake and dbt), test it, and publish it here with the
+      nfl-dagster pipeline; any mistakes are ours.</p>
+    {% endif %}
+    <details class="sql">
+      <summary>Show the SQL</summary>
+      {% for step in steps %}
+      <div class="step">
+        <pre><code>{{ step.sql }}</code></pre>
+        {% if step.params %}<p class="params">Values: {% for p in step.params %}<code>{{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+        {% if step.sources %}<p class="sources-line">Read from {% for table, published in step.sources %}<code>{{ table }}</code>{% if published %} (published {{ published | day }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </details>
+  </section>
+  {% endif %}
+</article>
+{% endif %}

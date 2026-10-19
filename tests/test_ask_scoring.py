@@ -27,3 +27,16 @@ from nfl_ask.scoring import check
 )
 def test_check(answer, kind, expected, decimals, row, ok):
     assert check(answer, kind, expected, row, decimals) is ok
+
+
+def test_full_name_check_needs_the_whole_name():
+    from nfl_ask.scoring import check
+    assert check("Jordan Love led the league.", "full_name", "Jordan Love", {})
+    assert not check("J.Love led the league.", "full_name", "Jordan Love", {})
+    assert not check("Josh Love led the league.", "full_name", "Jordan Love", {})
+
+
+def test_team_check_without_a_nickname_uses_the_abbreviation():
+    from nfl_ask.scoring import check
+    assert check("LAC covered 13 times.", "team", "LAC", {"team": "LAC"})
+    assert not check("DET covered 12 times.", "team", "LAC", {"team": "LAC"})

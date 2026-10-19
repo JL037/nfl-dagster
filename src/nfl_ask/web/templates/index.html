@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ask the NFL money question</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Show 429 (rate limited) messages; other 4xx/5xx are handled in app.js. -->
+  <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "429", "swap": true}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Is the money buying performance?</h1>
+      <p class="lede">Ask about NFL quarterbacks, contracts and teams. Every answer comes from our
+        data, shows how it was found, and says so when we don't know.</p>
+    </header>
+
+    <form class="ask" method="post" action="/answer"
+          hx-post="/answer" hx-target="#answer" hx-indicator="#loading" hx-disabled-elt="find button">
+      <label for="question" class="visually-hidden">Your question</label>
+      <textarea id="question" name="question" rows="2" maxlength="{{ max_chars }}" required
+                placeholder="Who was the best value QB in 2025?"></textarea>
+      <button type="submit">Ask</button>
+    </form>
+
+    <form class="examples" method="post" action="/answer"
+          hx-post="/answer" hx-target="#answer" hx-indicator="#loading">
+      <span>Try:</span>
+      {% for example in examples %}
+      <button type="submit" name="question" value="{{ example }}">{{ example }}</button>
+      {% endfor %}
+    </form>
+
+    <p id="loading" class="htmx-indicator">{{ loading }}</p>
+    <section id="answer" aria-live="polite"></section>
+
+    <footer>
+      {% if as_of %}<p>Data as of {{ as_of | day }}. Refreshed Mondays, Tuesdays and Fridays.</p>{% endif %}
+      <p>Privacy: we don't keep your questions or anything about you. Questions are sent to
+        Anthropic's Claude to be answered.</p>
+      <p class="credits">Data: <a href="https://github.com/nflverse">nflverse</a> play-by-play,
+        schedules, players and teams (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>),
+        with EPA from <a href="https://www.nflfastr.com">nflfastR</a>; contracts from
+        <a href="https://overthecap.com">OverTheCap</a> via nflverse. We aggregate and transform the
+        data; any mistakes are ours. Not affiliated with the NFL, nflverse or OverTheCap.</p>
+    </footer>
+  </main>
+</body>
+</html>

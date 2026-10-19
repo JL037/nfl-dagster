@@ -14,6 +14,10 @@ dependencies = [
     "sqlglot",
     "anthropic",
     "pyyaml",
+    # The Ask page (nfl_ask.web)
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
     "dagster-dbt",
     "dbt-snowflake",
     "nflreadpy>=0.1.5",
@@ -41,6 +45,8 @@ where = ["src"]
 # deploy time (see resources.py). Locally the folder doesn't exist and this matches nothing.
 [tool.setuptools.package-data]
 nfl_dagster = ["dbt-project/**/*"]
+# The Ask page's templates and static files (HTMX is served from the site, not a CDN).
+nfl_ask = ["web/templates/*.html", "web/static/*"]
 
 [tool.dagster]
 module_name = "nfl_dagster.definitions"

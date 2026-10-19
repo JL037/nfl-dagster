@@ -62,7 +62,7 @@ def test_request_translation():
     assert body["messages"][0] == {"role": "system", "content": "RULES AND CATALOG"}
     assert body["messages"][1] == {"role": "user", "content": "How good was Drake Maye?"}
     names = [t["function"]["name"] for t in body["tools"]]
-    assert names == ["run_query", "no_data"]
+    assert names == ["run_query", "answer", "no_data"]
     assert body["tools"][0]["function"]["parameters"] == TOOLS[0]["input_schema"]
 
 

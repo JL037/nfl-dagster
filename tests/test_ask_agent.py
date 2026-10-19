@@ -147,7 +147,7 @@ def test_requests_carry_the_catalog_rules_and_tools():
     assert "CATALOG" in system
     assert "No data, no answer" in system
     assert "Compute every number you state in SQL" in system
-    assert {t["name"] for t in request["tools"]} == {"run_query", "no_data"}
+    assert {t["name"] for t in request["tools"]} == {"run_query", "answer", "no_data"}
     assert request["model"] == "claude-haiku-5-5"
 
 
@@ -175,3 +175,183 @@ def test_a_sign_may_be_said_in_words():
     defense = QueryResult(columns=["team", "def_epa_per_play"], rows=[("LA", -0.0617)], truncated=False)
     assert unverified_numbers("LA allowed 0.062 EPA per play.", [defense], "Best defense?") == []
     assert unverified_numbers("LA allowed 0.071 EPA per play.", [defense], "Best defense?") == ["0.071"]
+
+
+# --- The structured answer (headline, explanation, chart) --------------------------------------
+
+LEADERS = QueryResult(columns=["passer_name", "cap_share", "epa_over_expected"],
+                      rows=[("D.Maye", 0.0298, 0.2953), ("B.Purdy", 0.0421, 0.1812)], truncated=False)
+
+
+def maye_query():
+    return turn(tool("run_query", sql="select * from qb_contract_value where season = 2025", params=[]))
+
+
+def final(headline="Drake Maye was the best value QB in 2025.",
+          explanation="He was +0.295 EPA per dropback over expected at 3.0% of the cap.", chart=None):
+    return turn(tool("answer", headline=headline, explanation=explanation, chart=chart))
+
+
+def bar_chart(**overrides):
+    return {"kind": "bar", "query": 1, "x": "passer_name", "y": "epa_over_expected",
+            "series": None, "title": "EPA over expected, 2025", **overrides}
+
+
+def test_answer_tool_gives_headline_explanation_and_chart():
+    result, _, _ = ask([maye_query(), final(chart=bar_chart())],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    assert result.headline == "Drake Maye was the best value QB in 2025."
+    assert result.explanation.startswith("He was +0.295")
+    assert result.chart == bar_chart()
+    # text stays the whole answer, so the evals score what the visitor reads.
+    assert result.text == f"{result.headline} {result.explanation}"
+
+
+def test_each_query_keeps_its_rows_for_the_page():
+    result, _, _ = ask([maye_query(), final()], query_fn=make_query_fn(results=[LEADERS]))
+    assert result.results == [LEADERS]
+
+
+def test_a_failed_query_keeps_its_place_with_no_rows():
+    result, _, _ = ask([
+        turn(tool("run_query", sql="select * from qb_contract_value where passer_name = 'D.Maye'", params=[])),
+        maye_query(), final(chart=bar_chart(query=2)),
+    ], query_fn=make_query_fn(results=[LEADERS], reject="'D.Maye'"))
+    assert result.results == [None, LEADERS]
+    assert result.chart["query"] == 2  # numbered the way the model saw them
+
+
+def test_results_are_numbered_for_the_model():
+    _, client, _ = ask([maye_query(), final()], query_fn=make_query_fn(results=[LEADERS]))
+    assert '"query": 1' in client.requests[1]["messages"][-1]["content"][0]["content"]
+
+
+def test_a_number_only_in_the_explanation_is_still_checked():
+    # Scripted twice: the retry gets the same unchecked number back.
+    result, _, _ = ask([maye_query(), final(explanation="He threw 31 touchdowns."),
+                        final(explanation="He threw 31 touchdowns.")],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "no_data" and result.text == NO_DATA_MESSAGE
+    assert result.reason == "numbers not in any result: 31"
+
+
+def test_a_number_in_the_chart_title_is_checked_too():
+    result, _, _ = ask([maye_query(), final(chart=bar_chart(title="Top 32 passers")),
+                        final(chart=bar_chart(title="Top 32 passers"))],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "no_data" and result.reason == "numbers not in any result: 32"
+
+
+@pytest.mark.parametrize("bad", [
+    {"query": 3},                 # no such query
+    {"x": "team"},                # column not in that result
+    {"y": "passer_name"},         # y must be numeric
+    {"kind": "pie"},              # not a chart we draw
+])
+def test_a_chart_that_does_not_fit_its_data_is_dropped_not_the_answer(bad):
+    result, _, _ = ask([maye_query(), final(chart=bar_chart(**bad))],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    assert result.chart is None
+
+
+def test_a_plain_text_answer_still_works():
+    result, _, _ = ask([maye_query(), turn(text("Drake Maye was +0.295 over expected."), stop="end_turn")],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    assert result.headline == "Drake Maye was +0.295 over expected."
+    assert result.explanation == "" and result.chart is None
+
+
+def test_stray_closing_tags_are_trimmed_from_the_answer():
+    result, _, _ = ask([maye_query(), final(headline="Drake Maye led 2025.</headline>",
+                                            explanation="He was +0.295 over expected.</explanation>")],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.headline == "Drake Maye led 2025."
+    assert result.explanation == "He was +0.295 over expected."
+
+
+def test_rules_keep_names_as_written_and_ask_for_charts():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    system = "".join(block["text"] for block in client.requests[0]["system"])
+    assert "exactly as they appear in the results" in system  # "J.Love" must not become "Josh Love"
+    assert "Always include a chart" in system
+
+
+PACKED = ('Drake Maye led 2025.</headline>\n<parameter name="explanation">He was +0.295 over expected.'
+          '</explanation>\n<parameter name="chart">{"kind": "bar", "query": 1, "x": "passer_name", '
+          '"y": "epa_over_expected", "series": null, "title": "EPA over expected"}')
+
+
+def test_fields_packed_into_the_headline_are_recovered():
+    """Seen live: the model wrote every field into `headline` as pseudo-XML."""
+    result, _, _ = ask([maye_query(), turn(tool("answer", headline=PACKED, explanation="", chart=None))],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    assert result.headline == "Drake Maye led 2025."
+    assert result.explanation == "He was +0.295 over expected."
+    assert result.chart["kind"] == "bar" and result.chart["y"] == "epa_over_expected"
+
+
+def test_recovered_fields_are_still_number_checked():
+    packed = PACKED.replace("+0.295 over expected", "31 touchdowns")
+    result, _, _ = ask([maye_query(), turn(tool("answer", headline=packed, explanation="", chart=None)),
+                        turn(tool("answer", headline=packed, explanation="", chart=None))],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "no_data" and result.reason == "numbers not in any result: 31"
+
+
+def test_an_unchecked_number_gets_one_chance_to_be_fixed():
+    """Seen live: 0.008 worked out in the model's head. It's told which number, once."""
+    result, client, _ = ask([maye_query(), final(explanation="The gap was 0.008."),
+                             final(explanation="He was +0.295 over expected.")],
+                            query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered" and result.explanation == "He was +0.295 over expected."
+    feedback = client.requests[2]["messages"][-1]["content"][0]
+    assert feedback["is_error"] is True and "0.008" in feedback["content"]
+
+
+def test_only_one_chance():
+    result, client, _ = ask([maye_query(), final(explanation="The gap was 0.008."),
+                             final(explanation="The gap was 0.009.")],
+                            query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "no_data" and result.reason == "numbers not in any result: 0.009"
+    assert len(client.requests) == 3
+
+
+def test_packed_fields_win_over_a_placeholder_in_the_real_field():
+    """Seen live: fields packed into headline, and explanation itself set to "x"."""
+    result, _, _ = ask([maye_query(), turn(tool("answer", headline=PACKED, explanation="x", chart=None))],
+                       query_fn=make_query_fn(results=[LEADERS]))
+    assert result.explanation == "He was +0.295 over expected."
+
+
+def test_a_placeholder_explanation_is_dropped():
+    result, _, _ = ask([maye_query(), final(explanation="x")], query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered" and result.explanation == ""
+
+
+def test_rules_keep_the_headline_short():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    assert "under 25 words" in "".join(b["text"] for b in client.requests[0]["system"])
+
+
+def test_rules_use_full_names_and_the_regular_season():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    system = "".join(b["text"] for b in client.requests[0]["system"])
+    assert "passer_full_name" in system  # nflverse's full name, not a guess from "J.Love"
+    assert "game_type" in system and "playoffs" in system
+
+
+def test_an_answer_before_any_successful_query_gets_one_chance():
+    """Seen in the evals: every query rejected, then an answer. It's told to query first, once."""
+    result, client, _ = ask([final(), maye_query(), final()], query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    feedback = client.requests[1]["messages"][-1]["content"][0]
+    assert feedback["is_error"] is True and "query" in feedback["content"].lower()
+
+
+def test_rules_count_all_games_as_including_the_playoffs():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    assert '"all games"' in "".join(b["text"] for b in client.requests[0]["system"])

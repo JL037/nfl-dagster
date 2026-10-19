@@ -1,0 +1,16 @@
+# Never in the image: secrets, local state, data, build output.
+.env
+.env.*
+*.p8
+*.pem
+.git
+.venv
+.dagster_home
+.pytest_cache
+data
+dbt_project/target
+dbt_project/logs
+src/nfl_dagster/dbt-project
+evals/results
+**/__pycache__
+*.egg-info
