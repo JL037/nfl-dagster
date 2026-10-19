@@ -13,12 +13,8 @@ from dotenv import load_dotenv
 
 from nfl_ask.agent import answer_question
 from nfl_ask.catalog import build_catalog
+from nfl_ask.pricing import haiku_cost
 from nfl_ask.query import run_query
-
-# Claude Haiku 5.5, $ per token (input, output, cache read, cache write).
-PRICES = {"input_tokens": 0.10e-6, "output_tokens": 0.50e-6,
-          "cache_read_input_tokens": 0.01e-6, "cache_creation_input_tokens": 0.125e-6}
-
 
 def main(question: str) -> None:
     load_dotenv()
@@ -33,7 +29,7 @@ def main(question: str) -> None:
     print(f"[{result.status}] {result.text}")
     for sql, params in result.queries:
         print(f"  sql: {sql}" + (f"  params: {params}" if params else ""))
-    cost = sum(PRICES[k] * v for k, v in result.usage.items())
+    cost = haiku_cost(result.usage)
     print(f"  tokens: {result.usage}  cost: ${cost:.5f}")
 
 

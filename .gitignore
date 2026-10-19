@@ -195,3 +195,6 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 *:Zone.Identifier
+
+# Eval run details (our fixed test questions and the models answers)
+evals/results/

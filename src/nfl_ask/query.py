@@ -23,6 +23,9 @@ WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Create, exp.Drop, e
           exp.Command, exp.Set, exp.Into)
 
 
+WILDCARDS = set("%_")
+
+
 class QueryRejected(ValueError):
     """The query broke a rule; it was never sent to the database."""
 
@@ -56,7 +59,8 @@ def validate_sql(sql: str) -> None:
             )
 
     for literal in tree.find_all(exp.Literal):
-        if literal.is_string:
+        # A wildcard alone ('%', as in ilike '%' || %s || '%') carries no trace of the question.
+        if literal.is_string and not set(literal.this) <= WILDCARDS:
             raise QueryRejected(
                 f"Text values must be a bound parameter (%s), not typed into the SQL: {literal.sql()}"
             )

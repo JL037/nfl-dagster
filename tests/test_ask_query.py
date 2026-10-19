@@ -23,6 +23,8 @@ from nfl_ask.query import QueryRejected, run_query, validate_sql
         "select a.passer_name from marts.qb_season_epa a join marts.qb_contract_value b"
         " using (qb_season_key) where a.season = %s",
         "select table_name, published_at from marts._publications",
+        # A wildcard alone carries no trace of the question; the name stays a parameter.
+        "select * from qb_contract_value where passer_name ilike '%' || %s || '%'",
     ],
 )
 def test_accepts_one_select_over_the_marts(sql):
@@ -49,6 +51,7 @@ def test_accepts_one_select_over_the_marts(sql):
         ("select * from public.anything", "marts"),
         # Text typed into the SQL would be kept verbatim in Prisma's query log.
         ("select * from marts.qb_contract_value where passer_name = 'D.Maye'", "bound parameter"),
+        ("select * from marts.qb_contract_value where passer_name like '%Maye%'", "bound parameter"),
         ("", "one statement"),
     ],
 )

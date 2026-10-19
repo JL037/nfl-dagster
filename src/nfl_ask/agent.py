@@ -31,7 +31,9 @@ Rules:
 season, league, player or term they don't cover), call no_data straight away. Don't guess, \
 don't use what you know about football, and don't keep digging: you have at most 3 queries.
 2. Every number in your answer must come from a query result in this conversation. Rounding \
-is fine, and a fraction may be shown as a percent (0.026 as 2.6%).
+is fine, and a fraction may be shown as a percent (0.026 as 2.6%). Compute every number you state \
+in SQL (rates, shares, differences), not in your head, and never quote numbers from the \
+definitions below: they are examples written when the tables were built and may be out of date.
 3. Write one Postgres SELECT per call, against these tables only (no schema prefix needed). \
 Put every text value (names, teams, keys) in params and refer to it as %s; never type text \
 into the SQL. Numbers such as seasons may be written directly.
@@ -87,6 +89,7 @@ class AskResult:
     text: str
     queries: list[tuple[str, list]] = field(default_factory=list)  # for "how I got this"
     usage: dict[str, int] = field(default_factory=dict)  # tokens, summed over the loop's calls
+    reason: str = ""  # why there's no answer, for the evals; visitors only see NO_DATA_MESSAGE
 
 
 USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
@@ -118,7 +121,9 @@ def unverified_numbers(answer: str, results: Sequence[QueryResult], question: st
         if value in in_question or (decimals == 0 and 0 <= value <= 10):
             continue
         tolerance = 0.5 * 10 ** -decimals + 1e-9
-        if any(abs(v - value) <= tolerance or abs(v * 100 - value) <= tolerance for v in values):
+        # Magnitudes: an answer may say the sign in words ("allowed 0.062" for -0.062).
+        if any(abs(abs(v) - abs(value)) <= tolerance or abs(abs(v) * 100 - abs(value)) <= tolerance
+               for v in values):
             continue
         unverified.append(cleaned)
     return unverified
@@ -140,8 +145,8 @@ def answer_question(
 ) -> AskResult:
     usage = dict.fromkeys(USAGE_FIELDS, 0)
 
-    def finish(status: str, text: str) -> AskResult:
-        return AskResult(status=status, text=text, queries=queries, usage=usage)
+    def finish(status: str, text: str, reason: str = "") -> AskResult:
+        return AskResult(status=status, text=text, queries=queries, usage=usage, reason=reason)
     # Stable rules and catalog first, cached; the question is the only thing that varies.
     system = [{"type": "text", "text": RULES + catalog, "cache_control": {"type": "ephemeral"}}]
     messages = [{"role": "user", "content": question}]
@@ -161,16 +166,21 @@ def answer_question(
         for name in USAGE_FIELDS:
             usage[name] += getattr(response.usage, name, 0) or 0
         if response.stop_reason == "refusal":
-            return finish("no_data", NO_DATA_MESSAGE)
+            return finish("no_data", NO_DATA_MESSAGE, "refusal")
         tool_uses = [block for block in response.content if block.type == "tool_use"]
-        if any(block.name == "no_data" for block in tool_uses):
-            return finish("no_data", NO_DATA_MESSAGE)
+        gave_up = [block for block in tool_uses if block.name == "no_data"]
+        if gave_up:
+            return finish("no_data", NO_DATA_MESSAGE, f"model: {gave_up[0].input.get('reason', '')}")
 
         if not tool_uses:
             answer = "".join(b.text for b in response.content if b.type == "text").strip()
             # No query, no answer; and every number must be backed by a result.
-            if not results or not answer or unverified_numbers(answer, results, question):
-                return finish("no_data", NO_DATA_MESSAGE)
+            if not answer:
+                return finish("no_data", NO_DATA_MESSAGE, "empty answer")
+            if not results:
+                return finish("no_data", NO_DATA_MESSAGE, "answer without a query")
+            if unverified := unverified_numbers(answer, results, question):
+                return finish("no_data", NO_DATA_MESSAGE, f"numbers not in any result: {', '.join(unverified)}")
             return finish("answered", answer)
 
         messages.append({"role": "assistant", "content": response.content})
@@ -199,4 +209,4 @@ def answer_question(
                                  "content": format_result(result)})
         messages.append({"role": "user", "content": tool_results})
 
-    return finish("no_data", NO_DATA_MESSAGE)
+    return finish("no_data", NO_DATA_MESSAGE, "query budget used up")

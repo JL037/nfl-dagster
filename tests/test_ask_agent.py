@@ -85,6 +85,7 @@ def test_no_data_tool_gives_the_standard_reply():
     result, _, query_fn = ask([turn(tool("no_data", reason="No injury data is served."))])
     assert result.status == "no_data"
     assert result.text == NO_DATA_MESSAGE
+    assert result.reason == "model: No injury data is served."
     assert query_fn.calls == []
 
 
@@ -95,6 +96,7 @@ def test_query_budget_is_enforced():
     assert len(query_fn.calls) == 3
     assert len(client.requests) <= 4  # three queries, then one last chance to answer
     assert result.status == "no_data" and result.text == NO_DATA_MESSAGE
+    assert result.reason == "query budget used up"
 
 
 def test_rejected_query_is_reported_to_the_model_and_counts():
@@ -117,12 +119,15 @@ def test_a_number_not_in_any_result_turns_the_answer_into_no_data():
     ])
     assert result.status == "no_data"
     assert result.text == NO_DATA_MESSAGE
+    # Why, for the evals; the visitor only ever sees NO_DATA_MESSAGE.
+    assert result.reason == "numbers not in any result: 31"
 
 
 def test_an_answer_without_any_query_is_not_trusted():
     """No numbers to check here, so only the no-query rule can stop it."""
     result, _, _ = ask([turn(text("Drake Maye was a great value."), stop="end_turn")])
     assert result.status == "no_data"
+    assert result.reason == "answer without a query"
 
 
 def test_refusal_gives_the_standard_reply():
@@ -132,6 +137,7 @@ def test_refusal_gives_the_standard_reply():
         turn(text("Drake Maye was a great value."), stop="refusal"),
     ])
     assert result.status == "no_data"
+    assert result.reason == "refusal"
 
 
 def test_requests_carry_the_catalog_rules_and_tools():
@@ -140,6 +146,7 @@ def test_requests_carry_the_catalog_rules_and_tools():
     system = "".join(block["text"] for block in request["system"])
     assert "CATALOG" in system
     assert "No data, no answer" in system
+    assert "Compute every number you state in SQL" in system
     assert {t["name"] for t in request["tools"]} == {"run_query", "no_data"}
     assert request["model"] == "claude-haiku-5-5"
 
@@ -161,3 +168,10 @@ def test_requests_carry_the_catalog_rules_and_tools():
 def test_unverified_numbers(answer, unverified):
     question = "How good a value was Drake Maye in 2025?"
     assert unverified_numbers(answer, [MAYE], question) == unverified
+
+
+def test_a_sign_may_be_said_in_words():
+    """Seen in the evals: LA's defense was -0.062 EPA per play, written "allowed 0.062"."""
+    defense = QueryResult(columns=["team", "def_epa_per_play"], rows=[("LA", -0.0617)], truncated=False)
+    assert unverified_numbers("LA allowed 0.062 EPA per play.", [defense], "Best defense?") == []
+    assert unverified_numbers("LA allowed 0.071 EPA per play.", [defense], "Best defense?") == ["0.071"]

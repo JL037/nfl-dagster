@@ -1,0 +1,116 @@
+# Golden questions for the Ask page. Run with: python evals/run_evals.py
+#
+# expect: answer   -> must be answered, and every check must pass against `truth`
+# expect: no_data  -> must get the standard "We don't have the data..." reply
+#
+# `truth` is SQL over the served marts, computed at run time, so the expected values stay right
+# as the weekly refresh changes 2026. It returns one row; each check names a column of it:
+#   name: QB passer_name ("D.Maye"): the last name must appear
+#   team: team abbreviation + team_name: the abbreviation or the nickname must appear
+#   value: a number, written with at least `decimals` decimals (as is or as a percent)
+#   percent: a number already in percent, written with at least `decimals` decimals
+#   count: a whole number, exactly
+# contains_any: at least one of these words must appear (e.g. the in-progress caveat)
+
+- id: best_value_2025
+  question: Which quarterback was the best value for his share of the salary cap in 2025?
+  expect: answer
+  truth: select passer_name from qb_contract_value where season = 2025 and is_cap_hit_for_team order by epa_over_expected desc limit 1
+  checks: [{column: passer_name, kind: name}]
+
+- id: maye_over_expected_2025
+  question: How far above expected for his cap share was Drake Maye's EPA per dropback in 2025?
+  expect: answer
+  truth: select epa_over_expected from qb_contract_value where season = 2025 and passer_name = 'D.Maye'
+  checks: [{column: epa_over_expected, kind: value, decimals: 2}]
+
+- id: prescott_worth_it_2025
+  question: Was Dak Prescott worth his contract in 2025?
+  expect: answer
+  truth: select epa_over_expected from qb_contract_value where season = 2025 and passer_name = 'D.Prescott'
+  checks: [{column: epa_over_expected, kind: value, decimals: 2}]
+
+- id: highest_cap_share_2025
+  question: Which quarterback had the biggest cap hit as a share of the salary cap in 2025?
+  expect: answer
+  truth: select passer_name from qb_contract_value where season = 2025 order by cap_share desc nulls last limit 1
+  checks: [{column: passer_name, kind: name}]
+
+- id: love_cap_share_2025
+  question: What share of the salary cap was Jordan Love's cap hit in 2025?
+  expect: answer
+  truth: select 100 * cap_share as pct from qb_contract_value where season = 2025 and passer_name = 'J.Love'
+  checks: [{column: pct, kind: percent, decimals: 1}]
+
+- id: worth_it_count_2025
+  question: How many quarterbacks were worth their contract in 2025?
+  expect: answer
+  truth: select count(*) filter (where worth_it) as n from qb_contract_value where season = 2025
+  checks: [{column: n, kind: count}]
+
+- id: mahomes_2018
+  question: How far above expected for his cap share was Patrick Mahomes in 2018?
+  expect: answer
+  truth: select epa_over_expected from qb_contract_value where season = 2018 and passer_name = 'P.Mahomes'
+  checks: [{column: epa_over_expected, kind: value, decimals: 2}]
+
+- id: best_epa_2025
+  question: Which quarterback had the highest EPA per dropback in 2025?
+  expect: answer
+  truth: select passer_name from qb_season_epa where season = 2025 order by epa_per_dropback desc limit 1
+  checks: [{column: passer_name, kind: name}]
+
+- id: allen_epa_2024
+  question: What was Josh Allen's EPA per dropback in 2024?
+  expect: answer
+  truth: select epa_per_dropback from qb_season_epa where season = 2024 and passer_name = 'J.Allen'
+  checks: [{column: epa_per_dropback, kind: value, decimals: 2}]
+
+- id: best_net_2025
+  question: Which team had the best net EPA per play in 2025?
+  expect: answer
+  truth: select team, team_name from team_season_epa where season = 2025 order by net_epa_per_play desc limit 1
+  checks: [{column: team, kind: team}]
+
+- id: best_defense_2025
+  question: Which team had the best defense by EPA allowed per play in 2025?
+  expect: answer
+  truth: select team, team_name from team_season_epa where season = 2025 order by def_epa_per_play limit 1
+  checks: [{column: team, kind: team}]
+
+- id: go_for_it_leader_2025
+  question: Which team went for it most often on fourth-and-short in 2025?
+  expect: answer
+  truth: select team, team_name from team_fourth_down where season = 2025 order by go_pct desc limit 1
+  checks: [{column: team, kind: team}]
+
+- id: league_go_rate_2025
+  question: How often did NFL teams go for it on fourth-and-short in competitive games in 2025?
+  expect: answer
+  truth: select 100.0 * sum(went_for_it) / sum(fourth_downs) as pct from team_fourth_down where season = 2025
+  checks: [{column: pct, kind: percent, decimals: 1}]
+
+- id: home_cover_share
+  question: Across all games since 2015 that had a spread, how often did the home team cover?
+  expect: answer
+  truth: select 100.0 * count(*) filter (where ats_result = 'home') / count(ats_result) as pct from game_results_vs_spread
+  checks: [{column: pct, kind: percent, decimals: 1}]
+
+- id: best_value_2026_so_far
+  question: Who has been the best value quarterback for his cap share so far in 2026?
+  expect: answer
+  truth: select passer_name from qb_contract_value where season = 2026 and is_cap_hit_for_team order by epa_over_expected desc limit 1
+  checks: [{column: passer_name, kind: name}]
+  contains_any: [estimate, in progress, so far, not complete, incomplete, partial, not final, still]
+
+# Out of scope: the data can't answer these. The right reply is "We don't have the data".
+- {id: mahomes_touchdowns, question: "How many touchdowns did Patrick Mahomes throw in 2024?", expect: no_data}
+- {id: super_bowl_pick, question: "Who will win the Super Bowl this season?", expect: no_data}
+- {id: college_qb, question: "Which college quarterback was the best value in 2025?", expect: no_data}
+- {id: injuries, question: "Which quarterback missed the most games to injury in 2025?", expect: no_data}
+- {id: brady_2005, question: "What was Tom Brady's cap share in 2005?", expect: no_data}
+- {id: next_game_total, question: "What is the over/under for the Chiefs' next game?", expect: no_data}
+- {id: wide_receiver, question: "Who was the best value wide receiver in 2025?", expect: no_data}
+- {id: made_up_player, question: "How good a value was Johnny Fakeplayer in 2025?", expect: no_data}
+- {id: weather, question: "What was the weather in Buffalo for their last home game?", expect: no_data}
+- {id: future_cap_hit, question: "What will Drake Maye's cap hit be in 2030?", expect: no_data}
