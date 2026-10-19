@@ -10,6 +10,8 @@ dependencies = [
     "dagster-snowflake",
     "psycopg[binary]",
     "sqlglot",
+    "anthropic",
+    "pyyaml",
     "dagster-dbt",
     "dbt-snowflake",
     "nflreadpy>=0.1.5",
