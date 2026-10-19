@@ -1,3 +1,5 @@
+import os
+
 import dagster as dg
 import nflreadpy as nfl
 import polars as pl
@@ -5,10 +7,10 @@ from dagster_snowflake import SnowflakeResource
 from tabulate import tabulate
 
 from nfl_dagster.partitions import season_partitions
-from nfl_dagster.resources import REPO_ROOT, SNOWFLAKE_DATABASE
+from nfl_dagster.resources import SNOWFLAKE_DATABASE, raw_data_dir
 from nfl_dagster.snowflake_load import AuditFailed, load_parquet
 
-RAW_DIR = REPO_ROOT / "data" / "raw"
+RAW_DIR = raw_data_dir(os.environ)
 
 # pbp has 372 columns; preview just the ones that tell you what happened on the play.
 PBP_PREVIEW_COLUMNS = [
