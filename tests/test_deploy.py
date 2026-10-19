@@ -188,6 +188,13 @@ def test_deploy_uses_the_python_version_ci_tests(deploy):
     assert deploy["env"]["PYTHON_VERSION"] == setup["with"]["python-version"]
 
 
+def test_no_defs_state_refresh(deploy):
+    # "Refresh defs state" saves state for state-backed components and imports the project's
+    # components module (nfl_dagster.defs). This project has no components (dbt is wired with
+    # @dbt_assets), so the step can only fail: second deploy, "No module named 'nfl_dagster.defs'".
+    assert not any("refresh-defs-state" in s.get("with", {}).get("command", "") for s in steps(deploy))
+
+
 def test_prod_dbt_manifest_is_built_before_packaging(deploy):
     names = [s.get("name") for s in steps(deploy)]
     prepare = next(s for s in steps(deploy) if "prepare-and-package" in s.get("run", ""))
