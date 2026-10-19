@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 import sqlglot
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlglot import exp
@@ -99,6 +99,13 @@ def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
             "sources": sources_for(marts)}
 
 
+def serving_url(env: str, environ: Mapping[str, str]) -> str:
+    """The serving database for NFL_ENV: the pooled URL when set (the website makes many short
+    connections, which is what Prisma's pooler is for), else the direct one Dagster also uses."""
+    name = f"SERVING_DB_URL_{env.upper()}"
+    return environ.get(f"{name}_POOLED") or environ[name]
+
+
 def day(moment: datetime) -> str:
     local = moment.astimezone(PACIFIC)
     return f"{local:%b} {local.day}, {local.year}"
@@ -133,6 +140,10 @@ def create_app(
         except Exception as e:  # the page still works; it just can't say how fresh the data is
             log.warning("freshness lookup failed: %s", type(e).__name__)
             return {}
+
+    @app.get("/health", response_class=PlainTextResponse)
+    def health():
+        return "ok"  # for the host's health check: no database, no model
 
     @app.get("/", response_class=HTMLResponse)
     def page(request: Request):
@@ -196,7 +207,7 @@ def create_production_app() -> FastAPI:
     from nfl_ask.query import run_query
 
     env = os.getenv("NFL_ENV", "dev")
-    url = os.environ[f"SERVING_DB_URL_{env.upper()}"]
+    url = serving_url(env, os.environ)
     limiter = RateLimiter(
         per_minute=int(os.getenv("ASK_LIMIT_PER_MINUTE", "5")),
         per_hour=int(os.getenv("ASK_LIMIT_PER_HOUR", "30")),
