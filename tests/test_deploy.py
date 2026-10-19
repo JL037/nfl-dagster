@@ -146,6 +146,16 @@ def test_packaged_dbt_project_ships_in_the_package():
     assert "dbt-project/**/*" in package_data
 
 
+def test_deploy_environment_has_the_dg_cli():
+    # The workflow builds its environment with `uv sync`, which installs the `dev` dependency
+    # group, not the `dev` extra that `pip install -e ".[dev]"` reads. Its "Refresh defs state"
+    # step then runs `dg` from that environment (first deploy failed: No module named
+    # 'dagster_dg_cli').
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    dev_group = pyproject.get("dependency-groups", {}).get("dev", [])
+    assert any(req.split("[")[0].split(">")[0].split("=")[0].strip() == "dagster-dg-cli" for req in dev_group)
+
+
 def test_packaged_dbt_project_is_never_committed():
     ignored = subprocess.run(
         ["git", "check-ignore", "-q", f"{PACKAGED_DBT_DIR}/target/manifest.json"], cwd=REPO_ROOT
