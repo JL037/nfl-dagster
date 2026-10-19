@@ -105,7 +105,6 @@
   contains_any: [estimate, in progress, so far, not complete, incomplete, partial, not final, still]
 
 # Out of scope: the data can't answer these. The right reply is "We don't have the data".
-- {id: mahomes_touchdowns, question: "How many touchdowns did Patrick Mahomes throw in 2024?", expect: no_data}
 - {id: super_bowl_pick, question: "Who will win the Super Bowl this season?", expect: no_data}
 - {id: college_qb, question: "Which college quarterback was the best value in 2025?", expect: no_data}
 - {id: injuries, question: "Which quarterback missed the most games to injury in 2025?", expect: no_data}
@@ -127,12 +126,14 @@
   expect: answer
   # Regular season only, unless the question says playoffs (rule 8).
   truth: >
-    select team, count(*) as covers from (
+    select team, (select max(team_name) from team_season_epa t where t.team = c.team) as team_name,
+      count(*) as covers from (
       select home_team as team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'home'
       union all
       select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
     ) c group by team order by covers desc limit 1
   checks: [{column: team, kind: team}, {column: covers, kind: count}]
+  # team_name too, so "LA Chargers" counts as naming LAC (the team check accepts the nickname).
 
 - id: det_most_efficient_receiver_2025
   question: Who was the Lions' most efficient receiver in 2025?
@@ -165,4 +166,11 @@
   expect: answer
   truth: select team, team_name from team_offensive_line where season = 2025 and team in ('PHI', 'DET') order by sack_rate limit 1
   checks: [{column: team, kind: team}]
+
+# Was out of scope ("we don't have the data") until player_season_efficiency added passing TDs.
+- id: mahomes_touchdowns
+  question: How many touchdowns did Patrick Mahomes throw in 2024?
+  expect: answer
+  truth: select touchdowns from player_season_efficiency where season = 2024 and role = 'passer' and player_name = 'Patrick Mahomes'
+  checks: [{column: touchdowns, kind: count}]
 
