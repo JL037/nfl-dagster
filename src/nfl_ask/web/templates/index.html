@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ask the NFL money question</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Is the money buying performance?</h1>
+      <p class="lede">Ask about NFL quarterbacks, contracts and teams. Every answer comes from our
+        data, shows how it was found, and says so when we don't know.</p>
+    </header>
+
+    <form class="ask" method="post" action="/answer"
+          hx-post="/answer" hx-target="#answer" hx-indicator="#loading" hx-disabled-elt="find button">
+      <label for="question" class="visually-hidden">Your question</label>
+      <textarea id="question" name="question" rows="2" maxlength="{{ max_chars }}" required
+                placeholder="Who was the best value QB in 2025?"></textarea>
+      <button type="submit">Ask</button>
+    </form>
+
+    <form class="examples" method="post" action="/answer"
+          hx-post="/answer" hx-target="#answer" hx-indicator="#loading">
+      <span>Try:</span>
+      {% for example in examples %}
+      <button type="submit" name="question" value="{{ example }}">{{ example }}</button>
+      {% endfor %}
+    </form>
+
+    <p id="loading" class="htmx-indicator">{{ loading }}</p>
+    <section id="answer" aria-live="polite"></section>
+
+    <footer>
+      {% if as_of %}<p>Data as of {{ as_of | day }}. Refreshed Tuesdays and Fridays.</p>{% endif %}
+      <p>Privacy: we don't keep your questions or anything about you. Questions are sent to
+        Anthropic's Claude to be answered.</p>
+    </footer>
+  </main>
+</body>
+</html>

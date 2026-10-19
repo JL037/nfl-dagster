@@ -1,0 +1,20 @@
+{% if notice %}
+<p class="notice">{{ notice }}</p>
+{% else %}
+<article class="result {{ result.status }}">
+  <p class="asked">{{ question }}</p>
+  <p class="text">{{ result.text }}</p>
+  {% if steps %}
+  <details>
+    <summary>How I got this</summary>
+    {% for step in steps %}
+    <div class="step">
+      <pre><code>{{ step.sql }}</code></pre>
+      {% if step.params %}<p class="params">Values: {% for p in step.params %}<code>{{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+      {% if step.sources %}<p class="sources">Read from {% for table, published in step.sources %}<code>{{ table }}</code>{% if published %} (published {{ published | day }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+</article>
+{% endif %}

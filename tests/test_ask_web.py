@@ -1,0 +1,140 @@
+"""The Ask page, with a fake answer function and a fake freshness lookup: no model calls, no
+database, no cost. These pin what the page promises visitors: the question travels only in the
+request body and is never logged, every answer shows its SQL and where the data came from, and
+nothing the model writes can run in the browser.
+"""
+
+import logging
+from datetime import UTC, datetime
+
+import pytest
+from fastapi.testclient import TestClient
+
+from nfl_ask.agent import NO_DATA_MESSAGE, AskResult
+from nfl_ask.web import MAX_QUESTION_CHARS, create_app, tables_read
+
+PUBLISHED = datetime(2026, 10, 19, 18, 34, tzinfo=UTC)
+SECRET_QUESTION = "Is Drake Maye worth it in 2025, asks visitor 4f9c?"
+
+
+class FakeAsk:
+    def __init__(self, result=None, error=None):
+        self.result, self.error, self.questions = result, error, []
+
+    def __call__(self, question):
+        self.questions.append(question)
+        if self.error:
+            raise self.error
+        return self.result
+
+
+def answered(text="Drake Maye was the best value QB in 2025.", queries=None):
+    queries = queries if queries is not None else [
+        ("select player, epa_over_expected from qb_contract_value where player = %s", ["Drake Maye"])
+    ]
+    return AskResult(status="answered", text=text, queries=queries)
+
+
+def client(ask=None):
+    app = create_app(ask=ask or FakeAsk(answered()), freshness=lambda: {"qb_contract_value": PUBLISHED})
+    return TestClient(app, raise_server_exceptions=False)
+
+
+# --- The page -----------------------------------------------------------------------------------
+
+
+def test_question_box_posts_in_the_request_body():
+    page = client().get("/").text
+    assert 'hx-post="/answer"' in page
+    assert 'name="question"' in page
+    assert "hx-get" not in page  # a GET would put the question in the URL, and in access logs
+
+
+def test_example_questions_are_clickable():
+    page = client().get("/").text
+    assert page.count('name="question" value="') >= 3
+
+
+def test_page_says_how_fresh_the_data_is():
+    assert "Data as of Oct 19, 2026" in client().get("/").text
+
+
+def test_htmx_is_served_from_this_site():
+    c = client()
+    page = c.get("/").text
+    assert 'src="/static/htmx.min.js"' in page
+    assert "unpkg" not in page and "cdn" not in page  # no third party sees who visits
+    assert c.get("/static/htmx.min.js").status_code == 200
+
+
+# --- Answers ------------------------------------------------------------------------------------
+
+
+def test_answer_shows_its_sql_values_and_sources():
+    html = client().post("/answer", data={"question": "Was Maye worth it?"}).text
+    assert "Drake Maye was the best value QB in 2025." in html
+    assert "select player, epa_over_expected from qb_contract_value where player = %s" in html
+    # The bound value, shown next to its query (the answer text names him too, so look for it there).
+    assert "Values: <code>Drake Maye</code>" in html
+    assert "qb_contract_value" in html and "Oct 19, 2026" in html  # the mart and when it was published
+
+
+def test_no_data_gets_the_standard_reply():
+    ask = FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE, queries=[]))
+    html = client(ask).post("/answer", data={"question": "Who wins the Super Bowl?"}).text
+    assert NO_DATA_MESSAGE.replace("'", "&#39;") in html
+
+
+def test_model_text_cannot_run_in_the_page():
+    ask = FakeAsk(answered(text='<script>alert("x")</script>',
+                           queries=[("select 1 from qb_season_epa where x = %s", ["<img onerror=1>"])]))
+    html = client(ask).post("/answer", data={"question": "hi"}).text
+    assert "<script>alert" not in html and "<img onerror" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_answers_are_never_cached():
+    response = client().post("/answer", data={"question": "Was Maye worth it?"})
+    assert response.headers["cache-control"] == "no-store"
+
+
+# --- Privacy and cost ---------------------------------------------------------------------------
+
+
+def test_a_question_in_the_url_is_refused():
+    ask = FakeAsk(answered())
+    response = client(ask).get("/answer", params={"question": SECRET_QUESTION})
+    assert response.status_code == 405
+    assert ask.questions == []
+
+
+def test_question_is_not_logged_even_when_answering_fails(caplog):
+    caplog.set_level(logging.DEBUG)
+    response = client(FakeAsk(error=RuntimeError("model unavailable"))).post(
+        "/answer", data={"question": SECRET_QUESTION}
+    )
+    assert response.status_code == 200  # a friendly message in the answer area, not an error page
+    assert "try again" in response.text.lower()
+    assert "4f9c" not in caplog.text
+    assert "4f9c" not in response.text
+
+
+@pytest.mark.parametrize("question", ["", "   ", "x" * (MAX_QUESTION_CHARS + 1)])
+def test_empty_or_overlong_questions_never_reach_the_model(question):
+    ask = FakeAsk(answered())
+    response = client(ask).post("/answer", data={"question": question})
+    assert response.status_code == 200
+    assert ask.questions == []
+
+
+# --- Which marts an answer read -----------------------------------------------------------------
+
+
+def test_tables_read_lists_marts_not_ctes():
+    sql = ("with best as (select * from qb_contract_value) "
+           "select b.player from best b join qb_season_epa e using (qb_season_key)")
+    assert tables_read(sql) == ["qb_contract_value", "qb_season_epa"]
+
+
+def test_tables_read_survives_sql_it_cannot_parse():
+    assert tables_read("select from where") == []
