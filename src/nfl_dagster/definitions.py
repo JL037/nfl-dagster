@@ -27,12 +27,12 @@ current_season_refresh = dg.define_asset_job(
 )
 
 
-# 10:00 Pacific on Tuesdays and Fridays: after Sunday/Monday and Thursday games have
+# 10:00 Pacific on Mondays, Tuesdays and Fridays: after Sunday, Monday-night and Thursday games have
 # landed in nflverse. The schedule only refreshes the raw data; the dbt models follow on
 # their own once it's loaded (and its checks pass).
 @dg.schedule(
     job=current_season_refresh,
-    cron_schedule="0 10 * * 2,5",
+    cron_schedule="0 10 * * 1,2,5",
     execution_timezone="America/Los_Angeles",
 )
 def current_season_schedule():
