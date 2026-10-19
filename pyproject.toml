@@ -25,6 +25,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "python-dotenv", "matplotlib", "dagster-dg-cli"]
 
+# What `uv sync` installs by default (it reads dependency groups, not extras). The Dagster+
+# deploy workflow builds its environment that way and runs `dg` from it.
+[dependency-groups]
+dev = ["dagster-dg-cli"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
