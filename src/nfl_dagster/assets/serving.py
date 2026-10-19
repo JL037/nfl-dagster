@@ -7,14 +7,16 @@ from dagster_snowflake import SnowflakeResource
 from nfl_dagster.resources import SNOWFLAKE_DATABASE
 from nfl_dagster.serving import SCHEMA, ServingPostgresResource, postgres_type, publish_table
 
-# Every mart is served. test_every_mart_is_served fails when a new mart isn't listed here.
-SERVED_MARTS = [
-    "team_season_epa",
-    "qb_season_epa",
-    "game_results_vs_spread",
-    "team_fourth_down",
-    "qb_contract_value",
-]
+# Every mart is served, with its primary key: the column dbt tests as unique on that mart
+# (test_served_primary_keys_are_tested_unique_in_dbt keeps the two in step).
+# test_every_mart_is_served fails when a new mart isn't listed here.
+SERVED_MARTS = {
+    "team_season_epa": "team_season_key",
+    "qb_season_epa": "qb_season_key",
+    "game_results_vs_spread": "game_id",
+    "team_fourth_down": "team_season_key",
+    "qb_contract_value": "qb_season_key",
+}
 
 # When should the website's copy of a mart update? As soon as the mart does (eager), but not
 # while ANY check on the mart has failed. That's stricter than the dbt models' gate, which
@@ -66,7 +68,9 @@ def publish_marts(
             columns = [(name, postgres_type(t, p, s)) for name, t, p, s in described]
             rows = cur.execute(f"select * from {source}").fetchall()
         with serving.get_connection() as pg:
-            result = publish_table(pg, mart, columns, rows, source=source)
+            result = publish_table(
+                pg, mart, columns, rows, primary_key=[SERVED_MARTS[mart]], source=source
+            )
         yield dg.MaterializeResult(
             asset_key=key,
             metadata={
@@ -74,5 +78,6 @@ def publish_marts(
                 "source": dg.MetadataValue.text(source),
                 "rows_published": dg.MetadataValue.int(result["rows_published"]),
                 "column_count": dg.MetadataValue.int(len(columns)),
+                "primary_key": dg.MetadataValue.text(SERVED_MARTS[mart]),
             },
         )

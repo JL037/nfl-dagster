@@ -43,10 +43,13 @@ class FakeConnection:
         return self._cursor
 
 
-def run_publish(staged_rows: int, rows=ROWS, table="qb_contract_value"):
+def run_publish(staged_rows: int, rows=ROWS, table="qb_contract_value", primary_key=("qb_season_key",)):
     cursor = FakeCursor(staged_rows)
     try:
-        result = publish_table(FakeConnection(cursor), table, COLUMNS, rows, source="NFL_DEV.MARTS.QB_CONTRACT_VALUE")
+        result = publish_table(
+            FakeConnection(cursor), table, COLUMNS, rows,
+            primary_key=primary_key, source="NFL_DEV.MARTS.QB_CONTRACT_VALUE",
+        )
     except PublishFailed as e:
         return cursor.statements, e
     return cursor.statements, result
@@ -68,6 +71,9 @@ def test_clean_publish_audits_before_swapping_and_committing():
             "select count(*) from marts._staging_qb_contract_value",
             "drop table if exists marts.qb_contract_value",
             "alter table marts._staging_qb_contract_value rename to qb_contract_value",
+            # The key's index keeps the staging name through the table rename; without this,
+            # the next publish's staging table collides with it (index names are per schema).
+            "alter index marts._staging_qb_contract_value_pkey rename to qb_contract_value_pkey",
             "insert into marts._publications",
             "commit",
         )
@@ -95,9 +101,11 @@ def test_empty_mart_is_never_published():
 
 def test_staging_table_has_the_marts_columns_and_rows():
     cursor = FakeCursor(staged_rows=2)
-    publish_table(FakeConnection(cursor), "qb_contract_value", COLUMNS, ROWS, source="x")
+    publish_table(FakeConnection(cursor), "qb_contract_value", COLUMNS, ROWS, primary_key=["qb_season_key"], source="x")
     create = cursor.statements[position(cursor.statements, "create table marts._staging")]
     assert "qb_season_key text" in create and "epa_per_dropback double precision" in create
+    # The mart's grain, enforced by Postgres: a duplicate key fails the insert and the publish.
+    assert "primary key (qb_season_key)" in create
     assert cursor.inserted == ROWS
 
 
@@ -134,3 +142,8 @@ def test_unknown_snowflake_type_fails_loudly():
     """A VARIANT in a mart has no obvious Postgres type; fail rather than guess."""
     with pytest.raises(ValueError, match="VARIANT"):
         postgres_type("VARIANT", None, None)
+
+
+def test_primary_key_must_be_one_of_the_columns():
+    with pytest.raises(ValueError, match="not_a_column"):
+        run_publish(staged_rows=2, primary_key=("not_a_column",))

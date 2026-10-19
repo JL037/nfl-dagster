@@ -57,15 +57,26 @@ def check_identifier(name: str) -> str:
 
 
 def publish_table(
-    conn, table: str, columns: Sequence[tuple[str, str]], rows: Sequence[tuple], source: str
+    conn,
+    table: str,
+    columns: Sequence[tuple[str, str]],
+    rows: Sequence[tuple],
+    primary_key: Sequence[str],
+    source: str,
 ) -> dict[str, int]:
     """Replace marts.<table> in the serving database with `rows`, or change nothing.
 
-    `columns` is (name, Postgres type) pairs in row order. `source` names where the rows came
+    `columns` is (name, Postgres type) pairs in row order. `primary_key` is the mart's grain,
+    the column(s) dbt tests as unique: Postgres then enforces it (a duplicate fails the insert,
+    and the publish), lookups by key get an index, and tools like Prisma Studio can tell rows
+    apart (without a key, Studio drew one row per table). `source` names where the rows came
     from (the Snowflake table), recorded with the publication.
     """
     table = check_identifier(table)
     names = [check_identifier(name) for name, _ in columns]
+    missing = [key for key in primary_key if key not in names]
+    if not primary_key or missing:
+        raise ValueError(f"{table}: primary key {list(primary_key)} isn't in its columns ({missing})")
     staging = f"_staging_{table}"
     cur = conn.cursor()
 
@@ -77,7 +88,7 @@ def publish_table(
         cur.execute(
             f"create table {SCHEMA}.{staging} ("
             + ", ".join(f"{name} {pg_type}" for name, pg_type in columns)
-            + ")"
+            + f", primary key ({', '.join(primary_key)}))"
         )
         placeholders = ", ".join(["%s"] * len(names))
         cur.executemany(
@@ -95,6 +106,9 @@ def publish_table(
         # Publish: swap the staging table in, and record when.
         cur.execute(f"drop table if exists {SCHEMA}.{table}")
         cur.execute(f"alter table {SCHEMA}.{staging} rename to {table}")
+        # The key's index keeps its staging name through the table rename. Index names are
+        # unique per schema, so the next publish's staging table would collide with it.
+        cur.execute(f"alter index {SCHEMA}.{staging}_pkey rename to {table}_pkey")
         cur.execute(
             f"create table if not exists {PUBLICATIONS} ("
             "table_name text primary key, row_count bigint, source text, published_at timestamptz)"
