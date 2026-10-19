@@ -81,6 +81,7 @@ select
     qb_seasons.season,
     qb_seasons.passer_id,
     qb_seasons.passer_name,
+    qb_seasons.passer_full_name,
     qb_seasons.team,
     qb_seasons.dropbacks,
     qb_seasons.epa_per_dropback,

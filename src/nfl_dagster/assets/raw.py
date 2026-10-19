@@ -20,6 +20,7 @@ SCHEDULES_PREVIEW_COLUMNS = [
     "game_id", "week", "away_team", "away_score", "home_team", "home_score",
     "spread_line", "total_line",
 ]
+PLAYERS_PREVIEW_COLUMNS = ["gsis_id", "display_name", "position", "latest_team", "status"]
 # Leaves out season_history and contract_history: each is a list of structs, too long to preview.
 CONTRACTS_PREVIEW_COLUMNS = [
     "player", "position", "team", "year_signed", "years", "apy", "apy_cap_pct", "gsis_id",
@@ -61,6 +62,12 @@ AUDITS = {
     # staging's job, and raw stays a faithful copy of what nflverse delivered.
     "CONTRACTS": {
         "missing_otc_id": "select count_if(otc_id is null) from RAW.CONTRACTS",
+    },
+    # gsis_id is the key play-by-play's passer_id joins on (qb_season_epa). A missing id can't
+    # join, and a duplicate would double every QB season it matches, so either rolls back.
+    "PLAYERS": {
+        "missing_gsis_id": "select count_if(gsis_id is null) from RAW.PLAYERS",
+        "duplicate_gsis_id": "select count(*) - count(distinct gsis_id) from RAW.PLAYERS",
     },
 }
 
@@ -111,6 +118,21 @@ def raw_teams(snowflake: SnowflakeResource) -> dg.MaterializeResult:
     # MaterializeResult just records that the asset was materialized, plus metadata.
     return dg.MaterializeResult(
         metadata={**parquet_metadata(df, path), **load_to_snowflake(snowflake, df, path, "TEAMS")}
+    )
+
+
+@dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_players(snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """One row per player, from nflreadpy.load_players(): full names ("Jordan Love") for the
+    gsis_ids that play-by-play only names by initial ("J.Love")."""
+    df = nfl.load_players()
+
+    path = RAW_DIR / "players.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+    return dg.MaterializeResult(
+        metadata={**parquet_metadata(df, path, PLAYERS_PREVIEW_COLUMNS),
+                  **load_to_snowflake(snowflake, df, path, "PLAYERS")}
     )
 
 

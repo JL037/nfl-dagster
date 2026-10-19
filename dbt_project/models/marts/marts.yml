@@ -24,6 +24,12 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: passer_full_name
+        description: >
+          Full name from nflverse's player table (e.g. Jordan Love); the short passer_name
+          (J.Love) when the player isn't in it. Use this name when writing about a player.
+        data_tests:
+          - not_null
 
   - name: qb_contract_value
     description: >
@@ -36,6 +42,8 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: passer_full_name
+        description: Full name, from qb_season_epa (e.g. Jordan Love). Use this name when writing about a player.
       - name: cap_share
         description: cap_number / the league salary cap that season. Null without a cap hit.
       - name: is_cap_hit_for_team
@@ -167,3 +175,30 @@ unit_tests:
         - {qb_season_key: moved-2024, is_cap_hit_for_team: false, expected_epa_per_dropback: null, epa_over_expected: null, worth_it: null}
         - {qb_season_key: no_cap-2024, is_cap_hit_for_team: false, expected_epa_per_dropback: null, epa_over_expected: null, worth_it: null}
         - {qb_season_key: early-2026, is_cap_hit_for_team: true, expected_epa_per_dropback: 0.25, epa_over_expected: 0.65, worth_it: true}
+
+  - name: qb_season_full_names
+    description: >
+      passer_full_name comes from stg_players (nflverse's player table), so the Ask page can
+      write "Jordan Love" instead of guessing from "J.Love". A passer missing from the player
+      table keeps his row, with his short name; no QB season is dropped or doubled.
+    model: qb_season_epa
+    given:
+      - input: ref('stg_schedules')
+        rows:
+          - {season: 2025, game_type: REG, is_played: true}
+      - input: ref('stg_pbp')
+        rows:
+          - {season: 2025, season_type: REG, qb_dropback: 1, passer_id: P1, passer_name: J.Love, posteam: GB, epa: 0.2, success: 1, qb_scramble: 0}
+          - {season: 2025, season_type: REG, qb_dropback: 1, passer_id: P2, passer_name: X.Unknown, posteam: NE, epa: 0.1, success: 0, qb_scramble: 0}
+      - input: ref('stg_players')
+        rows:
+          - {player_id: P1, player_name: Jordan Love}
+          - {player_id: P3, player_name: Someone Else}
+    # The 200-dropback minimum would drop both one-play passers; the test overrides it.
+    overrides:
+      vars:
+        qb_min_dropbacks: 0
+    expect:
+      rows:
+        - {qb_season_key: P1-2025, passer_name: J.Love, passer_full_name: Jordan Love}
+        - {qb_season_key: P2-2025, passer_name: X.Unknown, passer_full_name: X.Unknown}
