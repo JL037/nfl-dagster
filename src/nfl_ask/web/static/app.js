@@ -54,3 +54,26 @@ function failed(message) {
 }
 document.addEventListener("htmx:sendError", () => failed("Couldn't reach the server. Check your connection and try again."));
 document.addEventListener("htmx:responseError", () => failed("Something went wrong on our side. Please try again in a moment."));
+
+// The question box grows with the question (up to the CSS max-height). Enter asks; Shift+Enter
+// starts a new line.
+const question = document.getElementById("question");
+if (question) {
+  const grow = () => { question.style.height = "auto"; question.style.height = `${question.scrollHeight + 2}px`; };
+  question.addEventListener("input", grow);
+  question.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    question.form.requestSubmit();
+  });
+}
+
+// Once there's an answer, the page steps back: the intro and examples fold away (style.css), the
+// box invites the next question, and the answer scrolls into view.
+document.addEventListener("htmx:afterSettle", (event) => {
+  if (event.detail.target.id !== "answer" || !event.detail.target.querySelector("article")) return;
+  document.body.classList.add("has-answer");
+  if (question) question.placeholder = "Ask another question…";
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  event.detail.target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+});

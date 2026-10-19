@@ -133,3 +133,58 @@
       select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
     ) c group by team order by covers desc limit 1
   checks: [{column: team, kind: team}, {column: covers, kind: count}]
+
+# The example questions on the page: a suggested question must always get a good answer.
+- id: example_prescott
+  question: Is Dak Prescott worth his contract?
+  expect: answer
+  truth: select 'D.Prescott' as passer_name
+  checks: [{column: passer_name, kind: name}]
+
+- id: example_best_offense_2024
+  question: Which offense was the most efficient in 2024?
+  expect: answer
+  truth: select team, team_name from team_season_epa where season = 2024 order by off_epa_per_play desc limit 1
+  checks: [{column: team, kind: team}]
+
+- id: example_ats_2024
+  question: Which team covered the spread most often in 2024?
+  expect: answer
+  truth: >
+    select team, count(*) as covers from (
+      select home_team as team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'home'
+      union all
+      select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
+    ) c group by team order by covers desc limit 1
+  checks: [{column: team, kind: team}]
+
+# No season given: any season is a fair reading, so this only has to be answered.
+- {id: example_fourth_down, question: "Who's the most aggressive team on fourth down?", expect: answer}
+
+- id: example_allen_trend
+  question: How has Josh Allen played year over year?
+  expect: answer
+  truth: select 'J.Allen' as passer_name
+  checks: [{column: passer_name, kind: name}]
+
+# Broad questions the data can answer one reasonable way (rule 1): answered, not no_data.
+- {id: broad_best_qb, question: "Who's the best quarterback in the NFL right now?", expect: answer}
+- {id: broad_best_defense, question: "Which team has the best defense?", expect: answer}
+- {id: broad_most_improved, question: "Which team improved the most from 2024 to 2025?", expect: answer}
+
+# Any NFL question the marts can answer, not only QBs and contracts.
+- id: lions_wins_2024
+  question: How many regular-season games did the Lions win in 2024?
+  expect: answer
+  truth: >
+    select count(*) as wins from game_results_vs_spread
+    where season = 2024 and game_type = 'REG'
+      and ((home_team = 'DET' and home_score > away_score) or (away_team = 'DET' and away_score > home_score))
+  checks: [{column: wins, kind: count}]
+
+# More out of scope, the kinds of thing "ask anything about the NFL" invites.
+- {id: fantasy_start, question: "Which quarterback should I start in fantasy this week?", expect: no_data}
+- {id: other_league, question: "Who was the best quarterback in the CFL in 2024?", expect: no_data}
+- {id: rushing_yards, question: "Which running back had the most rushing yards in 2024?", expect: no_data}
+- {id: head_coach, question: "Who is the Cowboys' head coach?", expect: no_data}
+- {id: draft_pick, question: "Who will the Giants draft first next year?", expect: no_data}

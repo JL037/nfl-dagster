@@ -36,17 +36,20 @@ from nfl_ask.agent import AskResult
 from nfl_ask.pricing import haiku_cost
 from nfl_ask.web.charts import render_chart
 from nfl_ask.web.limits import RateLimiter
-from nfl_ask.web.present import data_table, mart_docs, mart_name, notes_for, sources_for
+from nfl_ask.web.present import (coverage, data_table, key_stats, mart_docs, mart_name, notes_for,
+                                 sources_for, subject_rows)
 
 HERE = Path(__file__).parent
 MAX_QUESTION_CHARS = 500  # longer questions cost more tokens and are rarely clearer
 PACIFIC = ZoneInfo("America/Los_Angeles")  # the refresh schedule's timezone
 
+# A spread of topics, so the examples show range rather than suggest the only questions that work.
 EXAMPLE_QUESTIONS = [
-    "Who was the best value QB in 2025?",
     "Is Dak Prescott worth his contract?",
+    "Which offense was the most efficient in 2024?",
     "Which team covered the spread most often in 2024?",
-    "Which team went for it on fourth down the most in 2025?",
+    "Who's the most aggressive team on fourth down?",
+    "How has Josh Allen played year over year?",
 ]
 LOADING_LINES = ["Reviewing the tape…", "Checking the cap sheet…", "Running it back…",
                  "Asking the film room…", "Counting dropbacks…"]
@@ -68,16 +71,24 @@ def tables_read(sql: str) -> list[str]:
 
 
 def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
-    """What the answer fragment shows: the chart, the data tables, and where each number came from."""
-    steps, tables, marts = [], [], {}
+    """What the answer fragment shows: the subject's key numbers, the chart, the data tables, and
+    where each number came from."""
+    steps, tables, marts, stats = [], [], {}, []
+    chart_number = result.chart["query"] if result.chart else None
+    subjects = {}  # query number -> the rows the headline is about
     for number, ((sql, params), rows) in enumerate(zip(result.queries, result.results), start=1):
         read = tables_read(sql)
         steps.append({"number": number, "sql": sql, "params": params,
                       "sources": [(table, dates.get(table)) for table in read]})
         if rows is None:
             continue  # a rejected or failed query: shown in the SQL list, no data
-        charted = result.chart and result.chart["query"] == number
-        table = data_table(rows, first=[result.chart["x"], result.chart["y"]] if charted else ())
+        charted = number == chart_number
+        subjects[number] = subject_rows(rows, result.headline or result.text)
+        table = data_table(rows, first=[result.chart["x"], result.chart["y"]] if charted else (),
+                           subject=subjects[number])
+        # Key numbers from the charted query (else the first), only when one row is the subject.
+        if not stats and len(subjects[number]) == 1 and (charted or chart_number is None):
+            stats = key_stats(rows, subjects[number][0], table["columns"])
         table["number"], table["from"] = number, [mart_name(t) for t in read]
         tables.append(table)
         for t in read:
@@ -88,15 +99,14 @@ def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
                 if (label, note) not in mart["notes"]:
                     mart["notes"].append((label, note))
 
-    chart_svg, chart_number = None, None
+    chart_svg = None
     if result.chart:
-        chart_number = result.chart["query"]
-        svg = render_chart(result.chart, result.results[chart_number - 1])
+        svg = render_chart(result.chart, result.results[chart_number - 1], subjects.get(chart_number, ()))
         chart_svg = Markup(svg) if svg else None  # built from escaped parts in charts.py
     # The charted data first: it's the table the chart is drawn from.
     tables.sort(key=lambda t: t["number"] != chart_number)
     return {"steps": steps, "tables": tables, "marts": list(marts.values()), "chart": chart_svg,
-            "sources": sources_for(marts)}
+            "sources": sources_for(marts), "stats": stats, "coverage": coverage()}
 
 
 def serving_url(env: str, environ: Mapping[str, str]) -> str:
