@@ -73,7 +73,8 @@ def main(model_names: list[str]) -> None:
                 seconds = time.monotonic() - started
                 cost = haiku_cost(result.usage) if name == "haiku" else client.total_cost - cost_before
                 failures = score(item, result.status, result.text, truths[item["id"]])
-                rows.append({"id": item["id"], "expect": item["expect"], "status": result.status,
+                rows.append({"id": item["id"], "question": item["question"], "expect": item["expect"],
+                             "truth": truths[item["id"]], "status": result.status,
                              "reason": result.reason,
                              "passed": not failures, "failures": failures, "answer": result.text,
                              "queries": result.queries, "cost": cost, "seconds": round(seconds, 1)})
