@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nfl_ask.agent import NO_DATA_MESSAGE, AskResult
+from nfl_ask.query import QueryResult
 from nfl_ask.web import MAX_QUESTION_CHARS, create_app, tables_read
 
 PUBLISHED = datetime(2026, 10, 19, 18, 34, tzinfo=UTC)
@@ -28,11 +29,20 @@ class FakeAsk:
         return self.result
 
 
-def answered(text="Drake Maye was the best value QB in 2025.", queries=None):
+LEADERS = QueryResult(columns=["qb_season_key", "passer_name", "cap_share", "epa_over_expected"],
+                      rows=[("2025_maye", "D.Maye", 0.0298, 0.2953), ("2025_purdy", "B.Purdy", 0.0421, 0.1812)],
+                      truncated=False)
+BAR = {"kind": "bar", "query": 1, "x": "passer_name", "y": "epa_over_expected", "series": None,
+       "title": "EPA over expected, 2025"}
+
+
+def answered(text="Drake Maye was the best value QB in 2025.", queries=None, chart=None,
+             explanation="He was 0.295 EPA per dropback over expected at 3.0% of the cap."):
     queries = queries if queries is not None else [
         ("select player, epa_over_expected from qb_contract_value where player = %s", ["Drake Maye"])
     ]
-    return AskResult(status="answered", text=text, queries=queries)
+    return AskResult(status="answered", text=f"{text} {explanation}", queries=queries, headline=text,
+                     explanation=explanation, chart=chart, results=[LEADERS] * len(queries))
 
 
 def client(ask=None):
@@ -77,6 +87,39 @@ def test_answer_shows_its_sql_values_and_sources():
     # The bound value, shown next to its query (the answer text names him too, so look for it there).
     assert "Values: <code>Drake Maye</code>" in html
     assert "qb_contract_value" in html and "Oct 19, 2026" in html  # the mart and when it was published
+
+
+def test_answer_leads_with_headline_then_explanation():
+    html = client().post("/answer", data={"question": "Was Maye worth it?"}).text
+    assert 'class="headline">Drake Maye was the best value QB in 2025.' in html
+    assert html.index("best value QB") < html.index("0.295 EPA per dropback over expected")
+
+
+def test_the_chart_is_drawn_from_the_query_rows():
+    html = client(FakeAsk(answered(chart=BAR))).post("/answer", data={"question": "q"}).text
+    assert "<svg" in html and html.count('class="bar ') == 2
+
+
+def test_no_chart_when_none_was_chosen():
+    assert "<svg" not in client().post("/answer", data={"question": "q"}).text
+
+
+def test_the_data_is_shown_as_a_readable_table():
+    html = client().post("/answer", data={"question": "q"}).text
+    assert "<table" in html and "Quarterback" in html and "3.0%" in html
+    assert "2025_maye" not in html  # internal keys stay out of the table
+
+
+def test_where_this_comes_from_uses_the_dbt_descriptions():
+    html = client().post("/answer", data={"question": "q"}).text
+    assert "Where this comes from" in html
+    assert "Every QB season from qb_season_epa" in html  # qb_contract_value's description in marts.yml
+
+
+def test_no_data_suggests_what_can_be_asked():
+    ask = FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE, queries=[]))
+    html = client(ask).post("/answer", data={"question": "Who wins the Super Bowl?"}).text
+    assert "Try asking about" in html
 
 
 def test_no_data_gets_the_standard_reply():
@@ -138,3 +181,26 @@ def test_tables_read_lists_marts_not_ctes():
 
 def test_tables_read_survives_sql_it_cannot_parse():
     assert tables_read("select from where") == []
+
+
+# --- Download PDF -------------------------------------------------------------------------------
+
+
+def test_answers_offer_a_pdf_download():
+    html = client().post("/answer", data={"question": "Was Maye worth it?"}).text
+    assert "data-pdf" in html and "Download PDF" in html
+
+
+def test_no_pdf_button_without_an_answer():
+    ask = FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE, queries=[]))
+    assert "data-pdf" not in client(ask).post("/answer", data={"question": "q"}).text
+
+
+def test_the_page_loads_its_own_script_and_a_print_layout():
+    c = client()
+    page = c.get("/").text
+    assert 'src="/static/app.js"' in page
+    css = c.get("/static/style.css").text
+    assert "@media print" in css
+    js = c.get("/static/app.js").text
+    assert "window.print()" in js

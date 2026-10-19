@@ -30,7 +30,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlglot import exp
 
+from markupsafe import Markup
+
 from nfl_ask.agent import AskResult
+from nfl_ask.web.charts import render_chart
+from nfl_ask.web.present import data_table, mart_docs, mart_name, notes_for
 
 HERE = Path(__file__).parent
 MAX_QUESTION_CHARS = 500  # longer questions cost more tokens and are rarely clearer
@@ -56,6 +60,37 @@ def tables_read(sql: str) -> list[str]:
         return []
     ctes = {cte.alias_or_name for cte in tree.find_all(exp.CTE)}
     return sorted({t.name for t in tree.find_all(exp.Table) if t.name and t.name not in ctes})
+
+
+def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
+    """What the answer fragment shows: the chart, the data tables, and where each number came from."""
+    steps, tables, marts = [], [], {}
+    for number, ((sql, params), rows) in enumerate(zip(result.queries, result.results), start=1):
+        read = tables_read(sql)
+        steps.append({"number": number, "sql": sql, "params": params,
+                      "sources": [(table, dates.get(table)) for table in read]})
+        if rows is None:
+            continue  # a rejected or failed query: shown in the SQL list, no data
+        charted = result.chart and result.chart["query"] == number
+        table = data_table(rows, first=[result.chart["x"], result.chart["y"]] if charted else ())
+        table["number"], table["from"] = number, [mart_name(t) for t in read]
+        tables.append(table)
+        for t in read:
+            mart = marts.setdefault(t, {"name": mart_name(t), "table": t, "published": dates.get(t),
+                                        "description": mart_docs().get(t, {}).get("description", ""),
+                                        "notes": []})
+            for label, note in notes_for(t, table["columns"]):
+                if (label, note) not in mart["notes"]:
+                    mart["notes"].append((label, note))
+
+    chart_svg, chart_number = None, None
+    if result.chart:
+        chart_number = result.chart["query"]
+        svg = render_chart(result.chart, result.results[chart_number - 1])
+        chart_svg = Markup(svg) if svg else None  # built from escaped parts in charts.py
+    # The charted data first: it's the table the chart is drawn from.
+    tables.sort(key=lambda t: t["number"] != chart_number)
+    return {"steps": steps, "tables": tables, "marts": list(marts.values()), "chart": chart_svg}
 
 
 def day(moment: datetime) -> str:
@@ -110,13 +145,8 @@ def create_app(
             log.warning("answering failed: %s", type(e).__name__)
             return fragment({"notice": "Something went wrong answering that. Please try again."})
 
-        dates = published()
-        steps = [
-            {"sql": sql, "params": params,
-             "sources": [(table, dates.get(table)) for table in tables_read(sql)]}
-            for sql, params in result.queries
-        ]
-        return fragment({"question": question, "result": result, "steps": steps})
+        return fragment({"question": question, "result": result, "asked_on": day(datetime.now(PACIFIC)),
+                         **answer_view(result, published())})
 
     return app
 
