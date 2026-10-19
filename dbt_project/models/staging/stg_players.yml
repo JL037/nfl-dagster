@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: stg_players
+    description: Player lookup, one row per player, with full names.
+    columns:
+      - name: player_id
+        description: nflverse gsis_id, the same id as play-by-play's passer_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: Full name as nflverse displays it (e.g. Jordan Love).

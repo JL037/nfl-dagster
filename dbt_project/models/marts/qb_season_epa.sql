@@ -16,6 +16,8 @@ select
     passer_id,
     -- A passer_id always has one name; any_value just picks it.
     any_value(passer_name) as passer_name,
+    -- The full name from nflverse's player table, or the short name if he isn't in it.
+    coalesce(any_value(players.player_name), any_value(passer_name)) as passer_full_name,
     -- The team with the most of this QB's dropbacks (matters for mid-season trades).
     mode(posteam) as team,
     count(*) as dropbacks,
@@ -26,6 +28,8 @@ select
     any_value(season_progress.season_progress) = 1 as is_season_complete
 from {{ ref('stg_pbp') }}
 inner join season_progress using (season)
+-- Left join on the player table's unique key: no QB season is dropped or doubled.
+left join {{ ref('stg_players') }} as players on players.player_id = passer_id
 where qb_dropback = 1
     and season_type = 'REG'
     and passer_id is not null
@@ -34,4 +38,4 @@ group by season, passer_id
 -- finished season, pro-rated while a season is in progress (58 when 29% of games are played).
 -- A flat 200 let only the 8 highest-volume QBs into 2026 after five weeks, while 34 had
 -- played substantially. Finished seasons are unchanged.
-having count(*) >= 200 * any_value(season_progress.season_progress)
+having count(*) >= {{ var('qb_min_dropbacks', 200) }} * any_value(season_progress.season_progress)

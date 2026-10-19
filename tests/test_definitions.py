@@ -12,13 +12,14 @@ from nfl_dagster.assets.serving import SERVED_MARTS, SERVING_AUTOMATION_CONDITIO
 from nfl_dagster.definitions import contracts_schedule, current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
-RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts"}
+RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players"}
 DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
     "staging/stg_teams",
     "staging/stg_fourth_downs",
     "staging/stg_cap_hits",
+    "staging/stg_players",
     "staging/league_salary_caps",
     "marts/team_season_epa",
     "marts/qb_season_epa",
@@ -71,7 +72,8 @@ def test_checks(asset_graph):
     # The rest are dbt tests (schema tests and singular tests in dbt_project/tests/),
     # which dagster-dbt turns into asset checks.
     # dbt unit tests (unit_tests: in the YAML) are not asset checks; they run inside dbt build.
-    assert len(checks) == 45
+    # +3 for players: unique and not_null on stg_players.player_id, not_null on passer_full_name.
+    assert len(checks) == 48
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -93,6 +95,7 @@ def test_checks(asset_graph):
         ("staging/stg_schedules", {"raw_schedules"}),
         ("staging/stg_teams", {"raw_teams"}),
         ("staging/stg_cap_hits", {"raw_contracts"}),
+        ("staging/stg_players", {"raw_players"}),
         (
             "marts/qb_contract_value",
             {
@@ -104,7 +107,8 @@ def test_checks(asset_graph):
         ),
         ("marts/team_season_epa", {"staging/stg_pbp", "staging/stg_teams"}),
         # stg_schedules: how much of the season is played, for the pro-rated dropback minimum.
-        ("marts/qb_season_epa", {"staging/stg_pbp", "staging/stg_schedules"}),
+        # stg_players: full names ("Jordan Love", not "J.Love") for the Ask page.
+        ("marts/qb_season_epa", {"staging/stg_pbp", "staging/stg_schedules", "staging/stg_players"}),
         ("marts/game_results_vs_spread", {"staging/stg_schedules"}),
         ("staging/stg_fourth_downs", {"raw_pbp"}),
         ("marts/team_fourth_down", {"staging/stg_fourth_downs", "staging/stg_teams"}),
@@ -162,11 +166,18 @@ def test_schedule_requests_current_season():
 
 
 def test_contracts_refresh_job_and_schedule():
-    """Contracts aren't partitioned, so they can't share current_season_refresh; they get their
-    own job on the same Tuesday/Friday schedule, so all raw data refreshes together."""
+    """Contracts and players aren't partitioned, so they can't share current_season_refresh; they
+    get their own job on the same Tuesday/Friday schedule, so all raw data refreshes together."""
     job = defs.resolve_job_def("contracts_refresh")
-    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts"}
+    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players"}
     assert job.partitions_def is None
     assert contracts_schedule.cron_schedule == current_season_schedule.cron_schedule
     assert contracts_schedule.execution_timezone == "America/Los_Angeles"
     assert contracts_schedule.job_name == "contracts_refresh"
+
+
+def test_players_load_is_audited_for_missing_and_duplicate_ids():
+    """A duplicate id would double every QB season it joins to; a missing one can't join."""
+    from nfl_dagster.assets.raw import AUDITS
+
+    assert set(AUDITS["PLAYERS"]) == {"missing_gsis_id", "duplicate_gsis_id"}

@@ -33,6 +33,15 @@ sources:
             dagster:
               asset_key: ["raw_schedules"]
 
+      - name: players
+        description: >
+          One row per player (nflreadpy.load_players), loaded whole each time. gsis_id is
+          play-by-play's passer_id; display_name is the full name.
+        config:
+          meta:
+            dagster:
+              asset_key: ["raw_players"]
+
       - name: contracts
         description: >
           One row per contract (nflreadpy.load_contracts, OverTheCap via nflverse), loaded whole
