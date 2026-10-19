@@ -24,6 +24,10 @@ WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Create, exp.Drop, e
 
 
 WILDCARDS = set("%_")
+# The data's own category values (game_results_vs_spread.ats_result and game_type). Typing them
+# into the SQL leaves no trace of a visitor's question, which is what the bound-parameter rule
+# protects; names, teams and anything else a visitor writes must still be bound. Exact case only.
+CATEGORY_WORDS = {"home", "away", "push", "REG", "WC", "DIV", "CON", "SB"}
 
 
 class QueryRejected(ValueError):
@@ -60,7 +64,7 @@ def validate_sql(sql: str) -> None:
 
     for literal in tree.find_all(exp.Literal):
         # A wildcard alone ('%', as in ilike '%' || %s || '%') carries no trace of the question.
-        if literal.is_string and not set(literal.this) <= WILDCARDS:
+        if literal.is_string and not set(literal.this) <= WILDCARDS and literal.this not in CATEGORY_WORDS:
             raise QueryRejected(
                 f"Text values must be a bound parameter (%s), not typed into the SQL: {literal.sql()}"
             )

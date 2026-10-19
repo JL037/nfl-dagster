@@ -55,6 +55,9 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .explanation { color: var(--fg-2); margin: 0; font-size: 1.05rem; }
 .no_data .headline { font-size: 1.25rem; }
 .notice { color: var(--fg-2); }
+.notice.limited, .notice.error { background: var(--surface); border: 1px solid var(--border);
+                                 border-radius: 12px; padding: 14px 18px; color: var(--fg); }
+.notice.error { border-color: var(--neg); }
 
 .chart-card { margin: 24px 0 0; padding: 16px 12px 8px; border-top: 1px solid var(--line); }
 .chart-card figcaption { font-weight: 600; margin: 0 4px 8px; }
@@ -92,7 +95,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .mart dl { margin: 0 0 12px; font-size: 0.9rem; }
 .mart dt { font-weight: 600; margin-top: 6px; }
 .mart dd { margin: 0; color: var(--fg-2); }
-.lineage { color: var(--muted); font-size: 0.85rem; margin: 12px 0; }
+.credits { color: var(--muted); font-size: 0.85rem; margin: 12px 0; }
+.credits a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); }
+.credits a:hover { color: var(--accent); }
 details.sql summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 0.9rem; }
 .step { margin-top: 12px; }
 pre { background: var(--code); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0;
@@ -139,4 +144,6 @@ footer p { margin: 4px 0; }
   h3 { break-after: avoid; }
   details.sql summary { color: var(--fg); list-style: none; }
   pre { font-size: 7.5pt; }
+  /* A PDF can't be clicked: print where each credit links to. */
+  .credits a[href]::after { content: " (" attr(href) ")"; font-size: 7.5pt; }
 }

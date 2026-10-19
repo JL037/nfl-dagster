@@ -335,3 +335,23 @@ def test_a_placeholder_explanation_is_dropped():
 def test_rules_keep_the_headline_short():
     _, client, _ = ask([turn(tool("no_data", reason="x"))])
     assert "under 25 words" in "".join(b["text"] for b in client.requests[0]["system"])
+
+
+def test_rules_use_full_names_and_the_regular_season():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    system = "".join(b["text"] for b in client.requests[0]["system"])
+    assert "passer_full_name" in system  # nflverse's full name, not a guess from "J.Love"
+    assert "game_type" in system and "playoffs" in system
+
+
+def test_an_answer_before_any_successful_query_gets_one_chance():
+    """Seen in the evals: every query rejected, then an answer. It's told to query first, once."""
+    result, client, _ = ask([final(), maye_query(), final()], query_fn=make_query_fn(results=[LEADERS]))
+    assert result.status == "answered"
+    feedback = client.requests[1]["messages"][-1]["content"][0]
+    assert feedback["is_error"] is True and "query" in feedback["content"].lower()
+
+
+def test_rules_count_all_games_as_including_the_playoffs():
+    _, client, _ = ask([turn(tool("no_data", reason="x"))])
+    assert '"all games"' in "".join(b["text"] for b in client.requests[0]["system"])

@@ -50,6 +50,8 @@ def expected_text(item: dict, truth: dict | None) -> str:
         value = truth[c["column"]]
         if c["kind"] == "name":
             parts.append(f"names **{value}**")
+        elif c["kind"] == "full_name":
+            parts.append(f"names **{value}** in full")
         elif c["kind"] == "team":
             parts.append(f"names **{value}** ({truth.get('team_name', '')})")
         elif c["kind"] == "count":

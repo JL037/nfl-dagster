@@ -36,7 +36,8 @@ in SQL (rates, shares, differences), not in your head, and never quote numbers f
 definitions below: they are examples written when the tables were built and may be out of date.
 3. Write one Postgres SELECT per call, against these tables only (no schema prefix needed). \
 Put every text value (names, teams, keys) in params and refer to it as %s; never type text \
-into the SQL. Numbers such as seasons may be written directly.
+into the SQL. Numbers such as seasons may be written directly, and so may these category \
+values: home, away, push, REG, WC, DIV, CON, SB.
 4. Use the definitions below exactly as written (for example "worth it" and cap share).
 5. A season with is_season_complete = false is still in progress: say its numbers are estimates.
 6. Finish by calling the answer tool: a headline (one sentence under 25 words that answers \
@@ -47,8 +48,12 @@ seasons, scatter for two measures against each other (such as cap share against 
 plots one of your query results by its query number and column names and draws exactly those \
 rows, so query the rows you want shown (at most 25). Use chart null only for a single number. \
 No markdown, no tags.
-7. Write player and team names exactly as they appear in the results (J.Love, not a guessed \
-first name): the data has initials, and a guessed name may be wrong.
+7. Name players with passer_full_name (Jordan Love) where a table has it; otherwise write \
+names exactly as they appear in the results (J.Love), never a guessed first name. Team names \
+as in the results.
+8. game_results_vs_spread includes playoff games: unless the question is about the playoffs \
+or says "all games", filter to the regular season with game_type = 'REG'. The other tables \
+are regular season only.
 
 The tables:
 """
@@ -147,6 +152,7 @@ class AskResult:
 USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
 UNCHECKED = "numbers not in any result: "
+NO_QUERY = "answer without a query"
 NUMBER = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?")
 
 
@@ -266,7 +272,7 @@ def answer_question(
             return finish("no_data", NO_DATA_MESSAGE, "empty answer")
         # No query, no answer; and every number must be backed by a result.
         if not results:
-            return finish("no_data", NO_DATA_MESSAGE, "answer without a query")
+            return finish("no_data", NO_DATA_MESSAGE, NO_QUERY)
         checked = " ".join([headline, explanation, (chart or {}).get("title", "")])
         if unverified := unverified_numbers(checked, results, question):
             return finish("no_data", NO_DATA_MESSAGE, UNCHECKED + ", ".join(unverified))
@@ -306,14 +312,20 @@ def answer_question(
             given = unpack(final[0].input)
             outcome = answered(given.get("headline", ""), given.get("explanation", ""), given.get("chart"))
             unchecked = outcome.reason.removeprefix(UNCHECKED)
-            if outcome.reason.startswith(UNCHECKED) and not retried:
+            if outcome.reason.startswith(UNCHECKED):
+                fix = (f"These numbers aren't in any query result: {unchecked}. Compute them in SQL "
+                       "with a query, or leave them out, then call answer again.")
+            elif outcome.reason == NO_QUERY:
+                fix = ("No query has succeeded yet, so there's nothing to answer from. Run a query "
+                       "(text values as %s params), then call answer.")
+            else:
+                fix = None
+            if fix and not retried:
                 retried, turns = True, turns + 1
                 messages.append({"role": "assistant", "content": response.content})
                 messages.append({"role": "user", "content": [
                     {"type": "tool_result", "tool_use_id": block.id, "is_error": True,
-                     "content": (f"These numbers aren't in any query result: {unchecked}. Compute them in "
-                                 "SQL with a query, or leave them out, then call answer again."
-                                 if block is final[0] else "Not run: answer was called in the same turn.")}
+                     "content": fix if block is final[0] else "Not run: answer was called in the same turn."}
                     for block in tool_uses
                 ]})
                 continue

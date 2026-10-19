@@ -12,7 +12,7 @@ from nfl_ask.catalog import MARTS_DIR, PROJECT_ROOT
 from nfl_ask.query import QueryResult
 
 LABELS = {
-    "passer_name": "Quarterback", "team": "Team", "team_name": "Team", "season": "Season",
+    "passer_name": "Quarterback", "passer_full_name": "Quarterback", "team": "Team", "team_name": "Team", "season": "Season",
     "week": "Week", "gameday": "Date", "game_type": "Game type", "dropbacks": "Dropbacks",
     "epa_per_dropback": "EPA per dropback", "expected_epa_per_dropback": "Expected EPA per dropback",
     "epa_over_expected": "EPA over expected", "is_season_complete": "Season complete",
@@ -39,6 +39,36 @@ MART_NAMES = {
     "team_season_epa": "Team season EPA", "game_results_vs_spread": "Game results vs the spread",
     "team_fourth_down": "Team fourth-down decisions",
 }
+
+
+# Where each mart's data comes from, for credit on every answer (and in the PDF). nflverse data
+# is CC BY 4.0: credit, a link, the license, and a note that we changed it (we aggregate it).
+NFLVERSE = "https://github.com/nflverse/nflverse-data"
+CC_BY = ("CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/")
+SOURCES = {
+    "pbp": {"name": "nflverse play-by-play", "url": NFLVERSE, "license": CC_BY,
+            "note": "EPA from the nflfastR model"},
+    "schedules": {"name": "nflverse schedules and betting lines", "url": NFLVERSE, "license": CC_BY},
+    "players": {"name": "nflverse players", "url": NFLVERSE, "license": CC_BY},
+    "teams": {"name": "nflverse teams", "url": NFLVERSE, "license": CC_BY},
+    "contracts": {"name": "OverTheCap contracts", "url": "https://overthecap.com", "license": None,
+                  "note": "via nflverse"},
+    "salary_caps": {"name": "NFL salary cap figures", "url": None, "license": None,
+                    "note": "as announced by the league"},
+}
+MART_SOURCES = {
+    "qb_season_epa": ["pbp", "schedules", "players"],
+    "qb_contract_value": ["pbp", "schedules", "players", "contracts", "salary_caps"],
+    "team_season_epa": ["pbp", "teams"],
+    "game_results_vs_spread": ["schedules"],
+    "team_fourth_down": ["pbp", "teams"],
+}
+
+
+def sources_for(tables) -> list[dict]:
+    """The sources behind the marts an answer read, each once, in a stable order."""
+    keys = {key for t in tables for key in MART_SOURCES.get(t, [])}
+    return [SOURCES[key] for key in SOURCES if key in keys]
 
 
 def mart_name(table: str) -> str:
@@ -87,6 +117,10 @@ def format_value(column: str, value, decimals: int | None = None) -> str:
     return shown.replace("-", MINUS, 1) if shown.startswith(("-", "$-")) else shown
 
 
+# A column shown only when its fuller version isn't in the same result.
+SUPERSEDED_BY = {"passer_name": "passer_full_name"}
+
+
 def is_internal(column: str) -> bool:
     return column.endswith(("_key", "_id"))
 
@@ -98,7 +132,8 @@ def is_number(value) -> bool:
 def data_table(result: QueryResult, max_rows: int = 25, first: Sequence[str] = ()) -> dict:
     """The rows behind an answer, ready for a table: readable headers and values, keys hidden,
     the charted columns first, and columns that are the same in every row moved to a note."""
-    keep = [i for i, c in enumerate(result.columns) if not is_internal(c)] or list(range(len(result.columns)))
+    keep = [i for i, c in enumerate(result.columns)
+            if not is_internal(c) and SUPERSEDED_BY.get(c) not in result.columns] or list(range(len(result.columns)))
     keep.sort(key=lambda i: first.index(result.columns[i]) if result.columns[i] in first else len(first))
     constants = []
     if len(result.rows) > 1:

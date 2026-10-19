@@ -31,8 +31,11 @@ def check(answer: str, kind: str, expected, row: dict, decimals: int = 0) -> boo
     text = answer.lower()
     if kind == "name":
         return str(expected).split(".")[-1].lower() in text
+    if kind == "full_name":  # passer_full_name ("Jordan Love"): a guessed first name fails
+        return str(expected).lower() in text
     if kind == "team":
-        nickname = str(row.get("team_name", "")).split()[-1].lower()
+        words = str(row.get("team_name") or "").split()
+        nickname = words[-1].lower() if words else ""
         return bool(re.search(rf"\b{re.escape(str(expected).lower())}\b", text)) or (nickname and nickname in text)
     if kind == "value":
         return has_value(answer, float(expected), decimals)

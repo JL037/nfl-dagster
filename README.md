@@ -705,9 +705,11 @@ Start Dagster with `make dev` / `make prod`, which set `DAGSTER_HOME` to `.dagst
 
 NFL data is provided by [nflverse](https://github.com/nflverse) and accessed through [nflreadpy](https://github.com/nflverse/nflreadpy). Thanks to the nflverse maintainers and contributors for making this data openly available.
 
-Most nflverse datasets are released under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/), and some have different terms. Check the [nflverse data documentation](https://github.com/nflverse/nflverse-data) for the license of each dataset. Contract data comes from [OverTheCap](https://overthecap.com), redistributed by nflverse (`load_contracts`). This repository does not redistribute any data; it downloads it at runtime.
+Most nflverse datasets are released under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/), and some have different terms. Check the [nflverse data documentation](https://github.com/nflverse/nflverse-data) for the license of each dataset. Play-by-play, schedules (with betting lines), players and teams come from nflverse; EPA (expected points added) comes from the [nflfastR](https://www.nflfastr.com) model built into that play-by-play. Contract data comes from [OverTheCap](https://overthecap.com), redistributed by nflverse (`load_contracts`). League salary cap figures (the `league_salary_caps` seed) are the league's announced numbers.
 
-This project is not affiliated with or endorsed by the NFL or nflverse.
+This repository doesn't store any of that data; it downloads it at runtime. The Ask page does **show** data derived from it (aggregated by the dbt marts), so every answer credits the sources behind the marts it read, with links and the license, and says the data was aggregated and transformed; the page footer credits all of them (see `MART_SOURCES` in `src/nfl_ask/web/present.py`, which a test keeps complete for every served mart). OverTheCap doesn't publish terms for its data; the Ask page is a short-lived demo, credits OverTheCap on every answer that uses contract data, and links to its site.
+
+This project is not affiliated with or endorsed by the NFL, nflverse or OverTheCap.
 
 ---
 

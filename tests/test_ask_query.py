@@ -124,3 +124,23 @@ def test_cannot_switch_back_to_read_write(conn):
     read-only once a statement takes a snapshot, and SET statements don't."""
     with pytest.raises(Exception, match="must be set before any query"):
         run_query(conn, "set transaction read write", [], validate=False)
+
+
+@pytest.mark.parametrize("sql", [
+    "select count(*) from game_results_vs_spread where ats_result = 'home'",
+    "select count(*) from game_results_vs_spread where ats_result in ('home', 'away', 'push')",
+    "select count(*) from game_results_vs_spread where game_type = 'REG'",
+])
+def test_the_datas_own_category_words_may_be_typed(sql):
+    """'home', 'REG': fixed vocabulary of the data, not text from a visitor's question."""
+    validate_sql(sql)
+
+
+@pytest.mark.parametrize("sql", [
+    "select * from qb_contract_value where passer_name = 'D.Maye'",
+    "select * from qb_contract_value where team = 'Home'",   # case matters: only the data's exact words
+    "select * from game_results_vs_spread where ats_result = 'homes'",
+])
+def test_other_typed_text_is_still_rejected(sql):
+    with pytest.raises(QueryRejected):
+        validate_sql(sql)

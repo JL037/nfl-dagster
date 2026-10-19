@@ -163,3 +163,15 @@ def test_axis_ticks_use_only_the_decimals_they_need():
 
 def test_percent_suffixes_in_computed_names_read_as_percent():
     assert column_label("avg_epa_under_5pct") == "Avg EPA under 5%"
+
+
+def test_full_name_replaces_the_short_name_in_tables():
+    both = QueryResult(columns=["passer_name", "passer_full_name", "epa_over_expected"],
+                       rows=[("J.Love", "Jordan Love", 0.18)], truncated=False)
+    table = data_table(both)
+    assert "passer_name" not in table["columns"]
+    assert table["labels"][table["columns"].index("passer_full_name")] == "Quarterback"
+
+
+def test_short_name_alone_is_still_shown():
+    assert data_table(QueryResult(columns=["passer_name"], rows=[("J.Love",)], truncated=False))["columns"] == ["passer_name"]

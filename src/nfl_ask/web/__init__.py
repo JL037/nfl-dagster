@@ -35,7 +35,8 @@ from markupsafe import Markup
 from nfl_ask.agent import AskResult
 from nfl_ask.pricing import haiku_cost
 from nfl_ask.web.charts import render_chart
-from nfl_ask.web.present import data_table, mart_docs, mart_name, notes_for
+from nfl_ask.web.limits import RateLimiter
+from nfl_ask.web.present import data_table, mart_docs, mart_name, notes_for, sources_for
 
 HERE = Path(__file__).parent
 MAX_QUESTION_CHARS = 500  # longer questions cost more tokens and are rarely clearer
@@ -94,7 +95,8 @@ def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
         chart_svg = Markup(svg) if svg else None  # built from escaped parts in charts.py
     # The charted data first: it's the table the chart is drawn from.
     tables.sort(key=lambda t: t["number"] != chart_number)
-    return {"steps": steps, "tables": tables, "marts": list(marts.values()), "chart": chart_svg}
+    return {"steps": steps, "tables": tables, "marts": list(marts.values()), "chart": chart_svg,
+            "sources": sources_for(marts)}
 
 
 def day(moment: datetime) -> str:
@@ -106,7 +108,20 @@ def create_app(
     *,
     ask: Callable[[str], AskResult],
     freshness: Callable[[], Mapping[str, datetime]],
+    limiter: RateLimiter | None = None,
+    trust_proxy: bool = False,
 ) -> FastAPI:
+    limiter = limiter or RateLimiter()
+
+    def visitor(request: Request) -> str:
+        """Who's asking, for the rate limit only. X-Forwarded-For only behind a trusted proxy
+        (the host's): otherwise anyone could set it and dodge the limit. Its first entry is the
+        visitor; the rest are the proxies it passed through."""
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if trust_proxy and forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
@@ -132,9 +147,10 @@ def create_app(
 
     @app.post("/answer", response_class=HTMLResponse)
     def answer(request: Request, question: str = Form("")):
-        def fragment(context):
-            response = templates.TemplateResponse(request, "_answer.html", context)
+        def fragment(context, status=200, headers=None):
+            response = templates.TemplateResponse(request, "_answer.html", context, status_code=status)
             response.headers["Cache-Control"] = "no-store"
+            response.headers.update(headers or {})
             return response
 
         question = question.strip()
@@ -142,6 +158,14 @@ def create_app(
             return fragment({"notice": "Type a question first."})
         if len(question) > MAX_QUESTION_CHARS:
             return fragment({"notice": f"Please keep questions under {MAX_QUESTION_CHARS} characters."})
+        decision = limiter.allow(visitor(request))
+        if not decision.ok:
+            wait = decision.retry_after
+            when = f"{wait} seconds" if wait < 120 else f"{round(wait / 60)} minutes"
+            # A real 429 with Retry-After (for browsers, monitoring and scripts); the page shows
+            # the message and counts down from data-retry-after (app.js).
+            return fragment({"notice": f"That's a lot of questions in a short time. Please try again in {when}.",
+                             "retry_after": wait}, status=429, headers={"Retry-After": str(wait)})
         try:
             result = ask(question)
         except Exception as e:
@@ -173,6 +197,11 @@ def create_production_app() -> FastAPI:
 
     env = os.getenv("NFL_ENV", "dev")
     url = os.environ[f"SERVING_DB_URL_{env.upper()}"]
+    limiter = RateLimiter(
+        per_minute=int(os.getenv("ASK_LIMIT_PER_MINUTE", "5")),
+        per_hour=int(os.getenv("ASK_LIMIT_PER_HOUR", "30")),
+        per_day_total=int(os.getenv("ASK_LIMIT_PER_DAY_TOTAL", "500")),
+    )
     client = anthropic.Anthropic()
 
     def connect():
@@ -192,4 +221,5 @@ def create_production_app() -> FastAPI:
         with connect() as conn:
             return dict(conn.execute("select table_name, published_at from marts._publications").fetchall())
 
-    return create_app(ask=ask, freshness=freshness)
+    return create_app(ask=ask, freshness=freshness, limiter=limiter,
+                      trust_proxy=os.getenv("ASK_TRUST_PROXY") == "1")

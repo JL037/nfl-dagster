@@ -6,6 +6,7 @@
 # `truth` is SQL over the served marts, computed at run time, so the expected values stay right
 # as the weekly refresh changes 2026. It returns one row; each check names a column of it:
 #   name: QB passer_name ("D.Maye"): the last name must appear
+#   full_name: QB passer_full_name ("Jordan Love"): the whole name must appear
 #   team: team abbreviation + team_name: the abbreviation or the nickname must appear
 #   value: a number, written with at least `decimals` decimals (as is or as a percent)
 #   percent: a number already in percent, written with at least `decimals` decimals
@@ -114,3 +115,21 @@
 - {id: made_up_player, question: "How good a value was Johnny Fakeplayer in 2025?", expect: no_data}
 - {id: weather, question: "What was the weather in Buffalo for their last home game?", expect: no_data}
 - {id: future_cap_hit, question: "What will Drake Maye's cap hit be in 2030?", expect: no_data}
+
+- id: full_name_best_epa_2024
+  question: Who had the highest EPA per dropback in 2024? Give his full name.
+  expect: answer
+  truth: select passer_full_name from qb_season_epa where season = 2024 order by epa_per_dropback desc limit 1
+  checks: [{column: passer_full_name, kind: full_name}]
+
+- id: ats_regular_season_2024
+  question: Which team covered the spread most often in 2024, and how many times?
+  expect: answer
+  # Regular season only, unless the question says playoffs (rule 8).
+  truth: >
+    select team, count(*) as covers from (
+      select home_team as team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'home'
+      union all
+      select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
+    ) c group by team order by covers desc limit 1
+  checks: [{column: team, kind: team}, {column: covers, kind: count}]

@@ -1,5 +1,5 @@
 {% if notice %}
-<p class="notice">{{ notice }}</p>
+<p class="notice{% if retry_after %} limited{% endif %}"{% if retry_after %} data-retry-after="{{ retry_after }}"{% endif %} role="status">{{ notice }}</p>
 {% elif result.status != "answered" %}
 <article class="result no_data">
   <p class="asked">{{ question }}</p>
@@ -57,8 +57,11 @@
       {% endif %}
     </div>
     {% endfor %}
-    <p class="lineage">Built from nflverse play-by-play and OverTheCap contract data, loaded into
-      Snowflake, tested, and published to this site by the nfl-dagster pipeline.</p>
+    {% if sources %}
+    <p class="credits">Data: {% for s in sources %}{% if s.url %}<a href="{{ s.url }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}{% if s.note %} ({{ s.note }}){% endif %}{% if s.license %}, <a href="{{ s.license[1] }}">{{ s.license[0] }}</a>{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.
+      We aggregate and transform it (Snowflake and dbt), test it, and publish it here with the
+      nfl-dagster pipeline; any mistakes are ours.</p>
+    {% endif %}
     <details class="sql">
       <summary>Show the SQL</summary>
       {% for step in steps %}

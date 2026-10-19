@@ -214,3 +214,34 @@ def test_each_answer_logs_its_cost_but_never_the_question(caplog):
     client(FakeAsk(result)).post("/answer", data={"question": SECRET_QUESTION})
     assert "cost=$0.00168" in caplog.text  # 12000*0.10 + 900*0.50 + 3000*0.01 per million
     assert "4f9c" not in caplog.text
+
+
+# --- Credit for the data ------------------------------------------------------------------------
+
+
+def test_every_served_mart_credits_its_sources():
+    """A new mart can't be served without saying where its data comes from."""
+    from nfl_dagster.assets.serving import SERVED_MARTS
+    from nfl_ask.web.present import MART_SOURCES
+    assert set(SERVED_MARTS) <= set(MART_SOURCES)
+    assert all(MART_SOURCES[m] for m in SERVED_MARTS)
+
+
+def test_the_footer_credits_the_data_and_its_license():
+    page = client().get("/").text
+    assert "https://github.com/nflverse" in page and "https://overthecap.com" in page
+    assert "https://creativecommons.org/licenses/by/4.0/" in page
+    assert "not affiliated" in page.lower()
+
+
+def test_an_answer_credits_the_sources_of_the_marts_it_read():
+    html = client().post("/answer", data={"question": "q"}).text  # reads qb_contract_value
+    sources = html[html.index("Where this comes from"):]
+    assert "OverTheCap" in sources and "nflverse play-by-play" in sources
+
+
+def test_credits_follow_the_marts_actually_read():
+    epa_only = answered(queries=[("select passer_full_name, epa_per_dropback from qb_season_epa", [])])
+    html = client(FakeAsk(epa_only)).post("/answer", data={"question": "q"}).text
+    sources = html[html.index("Where this comes from"):]
+    assert "nflverse play-by-play" in sources and "OverTheCap" not in sources
