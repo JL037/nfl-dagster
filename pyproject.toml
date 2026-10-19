@@ -7,6 +7,8 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "dagster>=1.13",
     "dagster-webserver>=1.13",
+    # Dagster+ needs it inside the running code location.
+    "dagster-cloud",
     "dagster-snowflake",
     "psycopg[binary]",
     "sqlglot",
@@ -21,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "python-dotenv", "matplotlib"]
+dev = ["pytest", "python-dotenv", "matplotlib", "dagster-dg-cli"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -30,6 +32,20 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The dbt project copied into the package by `dagster-dbt project prepare-and-package` at
+# deploy time (see resources.py). Locally the folder doesn't exist and this matches nothing.
+[tool.setuptools.package-data]
+nfl_dagster = ["dbt-project/**/*"]
+
 [tool.dagster]
 module_name = "nfl_dagster.definitions"
+code_location_name = "nfl_dagster"
+
+# Same project, described for the `dg` CLI (Dagster+ deploys use it).
+[tool.dg]
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "nfl_dagster"
+code_location_target_module = "nfl_dagster.definitions"
 code_location_name = "nfl_dagster"

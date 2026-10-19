@@ -7,10 +7,11 @@
 --   NFL.RAW    where Dagster loads the raw Parquet files
 --   NFL_ROLE   everything the pipeline needs, nothing more
 --   NFL_SVC    a service user for Dagster and dbt: key-pair auth only, no password
+--   NFL_DAGSTER_PLUS_SVC  the same, for Dagster+ Serverless (its own key; see below)
 --   NFL_MONITOR a credit cap that suspends the warehouse if usage runs away
 --   NFL_DEV    created later by `make clone-dev`, as a zero-copy clone of NFL
 --
--- Before running: replace <YOUR_USERNAME> and <PUBLIC_KEY> below.
+-- Before running: replace <YOUR_USERNAME>, <PUBLIC_KEY> and <DAGSTER_PLUS_PUBLIC_KEY> below.
 -- <PUBLIC_KEY> is the body of your .pub file without the BEGIN/END lines.
 
 use role accountadmin;
@@ -50,6 +51,19 @@ create user if not exists nfl_svc
     comment = 'nfl-dagster pipeline (Dagster + dbt)';
 alter user nfl_svc set rsa_public_key = '<PUBLIC_KEY>';
 grant role nfl_role to user nfl_svc;
+
+-- Service user for Dagster+ Serverless (production runs off the laptop). A user holds at most
+-- two public keys, and NFL_SVC's are one per machine, so Dagster+ gets its own user: same role,
+-- its own key, and it can be disabled or rotated without touching either machine. Its private
+-- key goes into Dagster+ as SNOWFLAKE_PRIVATE_KEY (the PEM text; there's no key file there).
+create user if not exists nfl_dagster_plus_svc
+    type = service
+    default_role = nfl_role
+    default_warehouse = nfl_wh
+    default_namespace = nfl.raw
+    comment = 'nfl-dagster pipeline on Dagster+ Serverless';
+alter user nfl_dagster_plus_svc set rsa_public_key = '<DAGSTER_PLUS_PUBLIC_KEY>';
+grant role nfl_role to user nfl_dagster_plus_svc;
 
 -- Let your own login use the role too, to browse the data in Snowsight.
 grant role nfl_role to user <YOUR_USERNAME>;

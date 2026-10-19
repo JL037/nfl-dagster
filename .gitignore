@@ -92,6 +92,8 @@ dagster.yaml.local
 # dbt
 # -----------------------------------------------------------------------------
 dbt_project/target/
+# The copy made into the package at deploy time (prepare-and-package)
+src/nfl_dagster/dbt-project/
 dbt_project/logs/
 dbt_project/dbt_packages/
 dbt_project/.user.yml
