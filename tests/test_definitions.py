@@ -157,7 +157,8 @@ def test_raw_data_checks_job_selects_only_checks():
 
 
 def test_schedule_requests_current_season():
-    assert current_season_schedule.cron_schedule == "0 10 * * 2,5"
+    # Monday (Sunday games), Tuesday (Monday night), Friday (Thursday night).
+    assert current_season_schedule.cron_schedule == "0 10 * * 1,2,5"
     assert current_season_schedule.execution_timezone == "America/Los_Angeles"
     assert current_season_schedule.job_name == "current_season_refresh"
     with dg.build_schedule_context() as context:
@@ -167,7 +168,7 @@ def test_schedule_requests_current_season():
 
 def test_contracts_refresh_job_and_schedule():
     """Contracts and players aren't partitioned, so they can't share current_season_refresh; they
-    get their own job on the same Tuesday/Friday schedule, so all raw data refreshes together."""
+    get their own job on the same Monday/Tuesday/Friday schedule, so all raw data refreshes together."""
     job = defs.resolve_job_def("contracts_refresh")
     assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players"}
     assert job.partitions_def is None

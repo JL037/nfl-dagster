@@ -73,7 +73,7 @@ The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Acl
    - Which quarterbacks were worth their share of the salary cap?
    - How often did home teams cover the spread?
 6. **Serve:** copies each mart into a small Postgres database (Prisma Postgres), audited before it's swapped in, so the website and its LLM never query Snowflake.
-7. **Orchestrate:** schedules refresh the current season and the contracts every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
+7. **Orchestrate:** schedules refresh the current season, the contracts and the players every Monday, Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
 
 ---
 
@@ -522,7 +522,7 @@ The migration from DuckDB was verified by getting identical 2025 numbers on both
 | **dbt tests as asset checks** | `unique`, `not_null`, `accepted_values` in the model `.yml` files, plus a singular test in `dbt_project/tests/` | 26 checks on the dbt assets |
 | **Asset groups** | `group_name="raw"`; `+meta: dagster: group:` in `dbt_project.yml` | Assets grouped as raw, staging, marts |
 | **Jobs** | `current_season_refresh` (`raw_pbp` + `raw_schedules` and their checks) in `definitions.py` | **Jobs → current_season_refresh** |
-| **Schedules** | `current_season_schedule`: `0 10 * * 2,5` (Tue and Fri 10:00 Pacific), partition = current season | The job page's top bar; **Automation** |
+| **Schedules** | `current_season_schedule`: `0 10 * * 1,2,5` (Mon, Tue and Fri 10:00 Pacific), partition = current season | The job page's top bar; **Automation** |
 | **Declarative automation** | `DBT_AUTOMATION_CONDITION` in `assets/dbt.py`: `eager()` plus a gate on failed upstream blocking checks | Each dbt asset's **Automation** tab (the evaluation tree explains every decision) |
 | **dbt translator** | `NflDbtTranslator.get_automation_condition` in `assets/dbt.py` | Every dbt asset gets the same condition |
 | **Automation sensor** | `default_automation_condition_sensor`, created by Dagster for assets with conditions | **Automation**: must be turned on |
