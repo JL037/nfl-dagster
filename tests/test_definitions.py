@@ -8,6 +8,7 @@ import dagster as dg
 import pytest
 
 from nfl_dagster.assets.dbt import DBT_AUTOMATION_CONDITION
+from nfl_dagster.assets.serving import SERVED_MARTS, SERVING_AUTOMATION_CONDITION
 from nfl_dagster.definitions import contracts_schedule, current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
@@ -26,6 +27,9 @@ DBT_ASSETS = {
     "marts/qb_contract_value",
 }
 
+# One serving asset per published mart: the copy the website reads.
+SERVING_ASSETS = {f"serving/{mart}" for mart in SERVED_MARTS}
+
 
 @pytest.fixture(scope="module")
 def asset_graph():
@@ -37,7 +41,19 @@ def keys(asset_keys) -> set[str]:
 
 
 def test_assets(asset_graph):
-    assert keys(asset_graph.get_all_asset_keys()) == RAW_ASSETS | DBT_ASSETS
+    assert keys(asset_graph.get_all_asset_keys()) == RAW_ASSETS | DBT_ASSETS | SERVING_ASSETS
+
+
+def test_every_mart_is_served():
+    """A mart the website can't see might as well not exist; a new mart must be added here."""
+    marts = {k.split("/", 1)[1] for k in DBT_ASSETS if k.startswith("marts/")}
+    assert set(SERVED_MARTS) == marts
+
+
+@pytest.mark.parametrize("mart", sorted(SERVING_ASSETS))
+def test_serving_asset_reads_its_mart(asset_graph, mart):
+    node = asset_graph.get(dg.AssetKey.from_user_string(mart))
+    assert keys(node.parent_keys) == {mart.replace("serving/", "marts/")}
 
 
 def test_checks(asset_graph):
@@ -100,14 +116,19 @@ def test_raw_assets_are_partitioned_by_season(asset_graph):
     assert season_partitions.get_partition_keys() == expected
 
 
-def test_automation_only_on_dbt_models(asset_graph):
-    """dbt models rebuild on their own (eager + the failed-check gate); raw assets are scheduled."""
+def test_automation_on_dbt_models_and_serving(asset_graph):
+    """dbt models and serving copies rebuild on their own; raw assets are scheduled."""
     for key in asset_graph.get_all_asset_keys():
         condition = asset_graph.get(key).automation_condition
+        labels = [child.get_label() for child in condition.children] if condition else None
         if key.to_user_string() in DBT_ASSETS:
             assert condition == DBT_AUTOMATION_CONDITION
-            labels = [child.get_label() for child in condition.children]
             assert labels == ["eager", "no_failed_blocking_checks_upstream"]
+        elif key.to_user_string() in SERVING_ASSETS:
+            # Stricter than the dbt models: ANY failed check on the mart (a failing dbt test
+            # is not blocking) holds the website's copy back.
+            assert condition == SERVING_AUTOMATION_CONDITION
+            assert labels == ["eager", "no_failed_checks_upstream"]
         else:
             assert condition is None, f"{key.to_user_string()} should not be automated"
 

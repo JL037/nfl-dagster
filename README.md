@@ -72,7 +72,8 @@ The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Acl
    - Which quarterbacks generated the most value per dropback?
    - Which quarterbacks were worth their share of the salary cap?
    - How often did home teams cover the spread?
-6. **Orchestrate:** schedules refresh the current season and the contracts every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
+6. **Serve:** copies each mart into a small Postgres database (Prisma Postgres), audited before it's swapped in, so the website and its LLM never query Snowflake.
+7. **Orchestrate:** schedules refresh the current season and the contracts every Tuesday and Friday; declarative automation then rebuilds only the dbt models downstream of what changed, and holds them back while an upstream blocking check has failed.
 
 ---
 
@@ -178,10 +179,12 @@ nfl-dagster/
 │   ├── partitions.py           # Season partitions (2015 → current season)
 │   ├── resources.py            # NFL_ENV → database + dbt target; SnowflakeResource, dbt resource
 │   ├── snowflake_load.py       # load_parquet(): PUT, COPY INTO, audit, then commit (or roll back)
+│   ├── serving.py              # publish_table(): stage, audit, swap into the serving Postgres (or roll back)
 │   ├── checks.py               # Partitioned, blocking asset checks on the raw tables
 │   └── assets/
 │       ├── raw.py              # raw_pbp, raw_schedules, raw_teams, raw_contracts
-│       └── dbt.py              # dbt models loaded as Dagster assets
+│       ├── dbt.py              # dbt models loaded as Dagster assets
+│       └── serving.py          # publish_marts: serving/<mart>, one copy per mart
 ├── dbt_project/
 │   ├── dbt_project.yml         # Staging → views in STAGING, marts → tables in MARTS
 │   ├── profiles.yml            # dev and prod targets (NFL_DEV / NFL), key-pair auth
@@ -197,6 +200,7 @@ nfl-dagster/
 │   ├── test_definitions.py     # Assets, checks, lineage, automation, job, schedule
 │   ├── test_resources.py       # NFL_ENV → database and dbt target
 │   ├── test_snowflake_load.py  # Write-audit-publish with a fake connection
+│   ├── test_serving.py         # The serving publish's stage/audit/swap, with a fake Postgres
 │   └── test_environments.py    # make dev/prod pair with the right workspace, port, and home
 └── data/                       # Created at runtime; not committed
     └── raw/
@@ -445,6 +449,15 @@ Each asset also writes its Parquet file under `data/raw/` and keeps a copy in th
 | `game_results_vs_spread` | `marts/game_results_vs_spread` | game | Final margin vs. the spread, and who covered (home, away, push) |
 | `team_fourth_down` | `marts/team_fourth_down` | team × season | Fourth-and-short (≤ 2 yards) in competitive game states (win probability 10–90%): go-for-it rate and conversion rate |
 | `qb_contract_value` | `marts/qb_contract_value` | passer × season | Cap hit, cap share, and EPA per dropback over what QBs paid that share usually produce (`epa_over_expected`, `worth_it`) |
+
+### Serving: Prisma Postgres (copied from the marts by Dagster)
+
+| Dagster asset | Postgres table | What it is |
+| --- | --- | --- |
+| `serving/<mart>`, one per mart | `marts.<mart>` | An exact copy of each mart, for the website and its LLM to read |
+| (written with each publish) | `marts._publications` | One row per table: row count, source Snowflake table, and when it was published |
+
+The website never queries Snowflake: visitors cost no warehouse time, Snowflake credentials stay out of the app, and the site keeps working if Snowflake is down. Each publish is write-audit-publish in one Postgres transaction: the rows go into a hidden staging table, the count is checked against Snowflake, and only then is the table swapped in, so readers see the old table or the new one, never a half-built one. The serving copies rebuild through automation after their mart does, and hold back while **any** check on the mart has failed (stricter than the dbt models, because a failing dbt test isn't blocking). Dev and prod are separate databases, chosen by `NFL_ENV` (`SERVING_DB_URL_DEV` / `SERVING_DB_URL_PROD` in `.env`).
 
 **EPA (Expected Points Added)** measures how much a play changed a team's expected points. It's the standard way to measure efficiency in NFL analytics. **Success rate** is the share of plays with EPA above zero. **Net EPA** is offensive EPA per play minus EPA allowed per play. **Cap share** is a player's cap hit divided by that season's league salary cap. **EPA over expected** is a QB's EPA per dropback minus what QBs paid the same cap share usually produce: a straight line fitted through every finished QB season since 2015.
 
