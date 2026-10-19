@@ -1,7 +1,7 @@
 name: Dagster Cloud Serverless Deployment
 
 # Scaffolded by `dg plus deploy configure serverless --git-provider github`, then changed in
-# three places (marked "nfl-dagster:"). Deploys main to the `prod` deployment of the learning1
+# the places marked "nfl-dagster:". Deploys main to the `prod` deployment of the learning1
 # organization. Secrets live in Dagster+ (Deployment settings -> Environment variables), not here;
 # the only GitHub secret is DAGSTER_CLOUD_API_TOKEN, which lets this workflow deploy.
 #
@@ -81,12 +81,9 @@ jobs:
           done
         shell: bash
 
-      # Refresh state for any StateBackedComponents in the project
-      - name: Refresh defs state
-        if: steps.prerun.outputs.result != 'skip'
-        uses: dagster-io/dagster-cloud-action/actions/utils/dg-cli@v1.13.26
-        with:
-          command: "plus deploy refresh-defs-state --target-path=${{ env.DAGSTER_PROJECT_DIR }}"
+      # nfl-dagster: no "Refresh defs state" step. It saves state for state-backed components
+      # and imports the components module (nfl_dagster.defs); this project has no components
+      # (dbt is wired with @dbt_assets), so the step could only fail. Add it back with them.
 
       # nfl-dagster: build the dbt manifest and copy the dbt project into the package
       # (src/nfl_dagster/dbt-project), because the deployed package has no repo folder around
