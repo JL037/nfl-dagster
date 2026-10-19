@@ -50,6 +50,14 @@ def test_every_mart_is_served():
     assert set(SERVED_MARTS) == marts
 
 
+def test_served_primary_keys_are_tested_unique_in_dbt(asset_graph):
+    """Each served table's primary key is the column dbt already tests as unique on its mart,
+    so the serving grain and the tested grain can't drift apart."""
+    check_names = {c.name for c in asset_graph.asset_check_keys}
+    for mart, key in SERVED_MARTS.items():
+        assert f"unique_{mart}_{key}" in check_names, f"{mart}.{key} has no dbt unique test"
+
+
 @pytest.mark.parametrize("mart", sorted(SERVING_ASSETS))
 def test_serving_asset_reads_its_mart(asset_graph, mart):
     node = asset_graph.get(dg.AssetKey.from_user_string(mart))
