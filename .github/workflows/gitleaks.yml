@@ -1,0 +1,46 @@
+name: Gitleaks
+
+# Scans the whole git history for secrets (API keys, connection strings, private keys).
+# A secret deleted in a later commit is still in history, so still leaked: that's why this
+# scans every commit, not just the current files. Separate from ci.yml and taskless.yml so
+# each can change without touching the others.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Pinned to the version used locally (`gitleaks version`). To upgrade, change both lines:
+  # the checksum comes from the release's gitleaks_<version>_checksums.txt.
+  GITLEAKS_VERSION: 8.18.3
+  GITLEAKS_SHA256: 1a1d875769ff0fedd6fb3a21eb5f9b933ff7a6b68b56e5d564236e31189391ad
+
+jobs:
+  # The job name is the status check that branch protection requires on main.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 0: a shallow clone has only the latest commit, so a key added and then
+      # deleted in an earlier commit would pass unseen.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The binary, not gitleaks-action: the action picks its own gitleaks version. The
+      # checksum check fails the job if the download isn't the exact pinned release.
+      - name: Install gitleaks
+        run: |
+          TARBALL="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$TARBALL" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${TARBALL}"
+          echo "${GITLEAKS_SHA256}  ${TARBALL}" | sha256sum -c -
+          tar -xzf "$TARBALL" gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+
+      # --redact: the logs of a public repo are public, so never print the matched value.
+      - name: Scan history
+        run: gitleaks detect --source . --redact --verbose --no-banner

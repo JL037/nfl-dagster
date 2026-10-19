@@ -163,6 +163,7 @@ nfl-dagster/
 ├── .env.example                # Template for .env (Snowflake credentials; .env is gitignored)
 ├── .github/workflows/ci.yml    # CI on every pull request: install, dbt parse, validate, tests
 ├── .github/workflows/taskless.yml # Code rules on every pull request (see Code rules)
+├── .github/workflows/gitleaks.yml # Secret scan of the whole git history on every pull request
 ├── .taskless/rules/sg/         # Code rules: one folder per rule, with its own test cases
 ├── .claude/skills/taskless/    # Skill that tells AI coding agents to follow the rules
 ├── .nvmrc                      # Node version for the Taskless CLI (22)
@@ -321,8 +322,8 @@ One thing a clone doesn't copy: **Dagster's run history.** `NFL_DEV` has every s
 
 1. Branch from `main`: `git switch -c step-8-tests`
 2. Work against dev: `make dev` (re-clone first with `make clone-dev` if you want fresh data)
-3. Open a pull request. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs the project, parses the dbt project, validates the Dagster definitions, and runs the tests. It needs no Snowflake credentials, so no secrets live in this public repo.
-4. Merge when CI is green. `main` is protected: changes land only through pull requests that pass CI.
+3. Open a pull request. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs the project, parses the dbt project, validates the Dagster definitions, and runs the tests. It needs no Snowflake credentials, so no secrets live in this public repo. [Gitleaks](https://github.com/gitleaks/gitleaks) ([`.github/workflows/gitleaks.yml`](.github/workflows/gitleaks.yml)) scans every commit for secrets, because a key deleted in a later commit is still in history. Run the same scan locally with `gitleaks detect --source . --redact` (version 8.18.3).
+4. Merge when CI is green. `main` is protected: changes land only through pull requests that pass three required checks, `validate`, `taskless`, and `gitleaks`.
 5. Run production from `main` with `make prod`.
 
 ---
