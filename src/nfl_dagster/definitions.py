@@ -1,7 +1,7 @@
 import dagster as dg
 
 from nfl_dagster.assets.dbt import nfl_dbt_models
-from nfl_dagster.assets.raw import raw_contracts, raw_pbp, raw_players, raw_schedules, raw_teams
+from nfl_dagster.assets.raw import raw_contracts, raw_pbp, raw_players, raw_rosters, raw_schedules, raw_teams
 from nfl_dagster.assets.serving import publish_marts
 from nfl_dagster.checks import raw_pbp_unique_plays, raw_schedules_scores_present
 from nfl_dagster.partitions import CURRENT_SEASON
@@ -46,7 +46,10 @@ def current_season_schedule():
 # declarative automation, like every dbt model. raw_players (full names) rides along: it's
 # unpartitioned too, and new players appear in the same waves as new contracts. The job keeps
 # its name so its Dagster+ schedule history carries on.
-contracts_refresh = dg.define_asset_job("contracts_refresh", selection=[raw_contracts, raw_players])
+# raw_rosters (season rosters, all seasons in one table) is unpartitioned too.
+contracts_refresh = dg.define_asset_job(
+    "contracts_refresh", selection=[raw_contracts, raw_players, raw_rosters]
+)
 
 contracts_schedule = dg.ScheduleDefinition(
     job=contracts_refresh,
@@ -56,7 +59,8 @@ contracts_schedule = dg.ScheduleDefinition(
 
 
 defs = dg.Definitions(
-    assets=[raw_teams, raw_contracts, raw_players, raw_pbp, raw_schedules, nfl_dbt_models, publish_marts],
+    assets=[raw_teams, raw_contracts, raw_players, raw_rosters, raw_pbp, raw_schedules, nfl_dbt_models,
+            publish_marts],
     asset_checks=[raw_pbp_unique_plays, raw_schedules_scores_present],
     jobs=[raw_data_checks, current_season_refresh, contracts_refresh],
     schedules=[current_season_schedule, contracts_schedule],

@@ -133,3 +133,36 @@
       select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
     ) c group by team order by covers desc limit 1
   checks: [{column: team, kind: team}, {column: covers, kind: count}]
+
+- id: det_most_efficient_receiver_2025
+  question: Who was the Lions' most efficient receiver in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and team = 'DET' and role = 'receiver' order by epa_per_play desc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: phi_most_consistent_2025
+  question: Which Eagles player was the most consistent in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and team = 'PHI' order by positive_game_share desc, game_epa_per_play_sd asc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: rb_150_most_consistent_2025
+  question: Which running back with at least 150 carries was the most consistent in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and role = 'rusher' and plays >= 150 order by positive_game_share desc, game_epa_per_play_sd asc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: phi_roster_2018_still_2026
+  question: How many players on the Eagles' 2026 roster were also on their 2018 roster?
+  expect: answer
+  truth: >
+    select count(*) as n from team_rosters a join team_rosters b on a.player_id = b.player_id
+    where a.team = 'PHI' and a.season = 2018 and b.team = 'PHI' and b.season = 2026
+  checks: [{column: n, kind: count}]
+
+- id: phi_det_sack_rate_2025
+  question: Which offensive line allowed the lower sack rate in 2025, the Eagles' or the Lions'?
+  expect: answer
+  truth: select team, team_name from team_offensive_line where season = 2025 and team in ('PHI', 'DET') order by sack_rate limit 1
+  checks: [{column: team, kind: team}]
+

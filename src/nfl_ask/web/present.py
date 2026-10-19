@@ -27,6 +27,25 @@ LABELS = {
     "away_team": "Away", "home_team": "Home", "away_score": "Away score", "home_score": "Home score",
     "result": "Home margin", "spread_line": "Spread", "home_cover_margin": "Home cover margin",
     "ats_winner": "Covered", "ats_result": "Result vs spread",
+    # Player, roster and offensive-line marts
+    "player_name": "Player", "role": "Role", "games": "Games", "plays": "Plays",
+    "epa_per_play": "EPA per play", "yards": "Yards", "yards_per_play": "Yards per play",
+    "touchdowns": "TDs", "completions": "Completions", "completion_rate": "Completion rate",
+    "interceptions": "INTs", "qualifying_games": "Qualifying games",
+    "positive_game_share": "Positive-EPA games", "game_epa_per_play_sd": "Game-to-game spread",
+    "most_efficient_player_name": "Most efficient", "most_efficient_epa_per_play": "EPA per play",
+    "most_consistent_player_name": "Most consistent",
+    "most_consistent_positive_game_share": "Positive-EPA games",
+    "most_consistent_game_epa_per_play_sd": "Game-to-game spread",
+    "position": "Position", "position_spot": "Spot", "jersey_number": "Jersey", "status": "Status",
+    "years_exp": "Years in NFL", "age": "Age", "height": "Height", "weight": "Weight",
+    "college": "College", "draft_club": "Drafted by", "draft_number": "Draft pick",
+    "rookie_year": "Rookie year", "dropbacks": "Dropbacks", "sacks": "Sacks", "qb_hits": "QB hits",
+    "sack_rate": "Sack rate", "qb_hit_rate": "QB-hit rate", "designed_rushes": "Designed runs",
+    "rush_epa_per_play": "Rush EPA per play", "rush_success_rate": "Rush success rate",
+    "yards_per_carry": "Yards per carry", "stuff_rate": "Stuff rate",
+    "explosive_run_rate": "Explosive run rate", "ol_players": "Linemen",
+    "ol_avg_years_exp": "Linemen's avg years", "ol_avg_age": "Linemen's avg age",
 }
 WORDS = {"epa": "EPA", "qb": "QB", "qbs": "QBs", "ats": "ATS", "id": "ID", "pct": "%", "avg": "Avg"}
 YEARLIKE = {"season", "week", "year"}
@@ -38,6 +57,9 @@ MART_NAMES = {
     "qb_contract_value": "QB contract value", "qb_season_epa": "QB season EPA",
     "team_season_epa": "Team season EPA", "game_results_vs_spread": "Game results vs the spread",
     "team_fourth_down": "Team fourth-down decisions",
+    "player_season_efficiency": "Player efficiency and consistency",
+    "team_player_leaders": "Team leaders by role",
+    "team_rosters": "Team rosters", "team_offensive_line": "Offensive lines",
 }
 
 
@@ -51,6 +73,7 @@ SOURCES = {
     "schedules": {"name": "nflverse schedules and betting lines", "url": NFLVERSE, "license": CC_BY},
     "players": {"name": "nflverse players", "url": NFLVERSE, "license": CC_BY},
     "teams": {"name": "nflverse teams", "url": NFLVERSE, "license": CC_BY},
+    "rosters": {"name": "nflverse rosters", "url": NFLVERSE, "license": CC_BY},
     "contracts": {"name": "OverTheCap contracts", "url": "https://overthecap.com", "license": None,
                   "note": "via nflverse"},
     "salary_caps": {"name": "NFL salary cap figures", "url": None, "license": None,
@@ -62,6 +85,10 @@ MART_SOURCES = {
     "team_season_epa": ["pbp", "teams"],
     "game_results_vs_spread": ["schedules"],
     "team_fourth_down": ["pbp", "teams"],
+    "player_season_efficiency": ["pbp", "schedules", "players"],
+    "team_player_leaders": ["pbp", "schedules", "players"],
+    "team_rosters": ["rosters"],
+    "team_offensive_line": ["pbp", "rosters", "teams"],
 }
 
 
@@ -102,6 +129,8 @@ def format_value(column: str, value, decimals: int | None = None) -> str:
     elif any(word in column for word in MONEY):
         size = abs(value)
         shown = f"${value / 1e6:.1f}M" if size >= 1e6 else f"${value / 1e3:.0f}K" if size >= 1e3 else f"${value:,.0f}"
+    elif ("years_exp" in column or column.endswith("age")) and isinstance(value, float):
+        shown = f"{value:.1f}"  # experience and age in years
     elif column in YEARLIKE:
         shown = str(int(value))
     elif isinstance(value, int):

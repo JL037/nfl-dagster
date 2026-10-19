@@ -175,3 +175,12 @@ def test_full_name_replaces_the_short_name_in_tables():
 
 def test_short_name_alone_is_still_shown():
     assert data_table(QueryResult(columns=["passer_name"], rows=[("J.Love",)], truncated=False))["columns"] == ["passer_name"]
+
+
+@pytest.mark.parametrize(("column", "value", "shown"), [
+    ("ol_avg_years_exp", 5.2857, "5.3"),
+    ("ol_avg_age", 27.04, "27.0"),
+    ("years_exp", 7, "7"),
+])
+def test_experience_and_age_read_as_years(column, value, shown):
+    assert format_value(column, value) == shown

@@ -6,7 +6,7 @@ import polars as pl
 from dagster_snowflake import SnowflakeResource
 from tabulate import tabulate
 
-from nfl_dagster.partitions import season_partitions
+from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 from nfl_dagster.resources import SNOWFLAKE_DATABASE, raw_data_dir
 from nfl_dagster.snowflake_load import AuditFailed, load_parquet
 
@@ -20,6 +20,7 @@ SCHEDULES_PREVIEW_COLUMNS = [
     "game_id", "week", "away_team", "away_score", "home_team", "home_score",
     "spread_line", "total_line",
 ]
+ROSTERS_PREVIEW_COLUMNS = ["season", "team", "full_name", "position", "depth_chart_position", "years_exp"]
 PLAYERS_PREVIEW_COLUMNS = ["gsis_id", "display_name", "position", "latest_team", "status"]
 # Leaves out season_history and contract_history: each is a list of structs, too long to preview.
 CONTRACTS_PREVIEW_COLUMNS = [
@@ -68,6 +69,14 @@ AUDITS = {
     "PLAYERS": {
         "missing_gsis_id": "select count_if(gsis_id is null) from RAW.PLAYERS",
         "duplicate_gsis_id": "select count(*) - count(distinct gsis_id) from RAW.PLAYERS",
+    },
+    # One row per player, team and season. A duplicate would count a player twice in a roster.
+    # A handful of rows have no gsis_id (2 in 2018 and 2026 together); staging leaves them out,
+    # so they're not audited here (a missing id would roll back every load).
+    "ROSTERS": {
+        "duplicate_player_team_season": (
+            "select count(*) - count(distinct gsis_id, team, season) from RAW.ROSTERS where gsis_id is not null"
+        ),
     },
 }
 
@@ -133,6 +142,25 @@ def raw_players(snowflake: SnowflakeResource) -> dg.MaterializeResult:
     return dg.MaterializeResult(
         metadata={**parquet_metadata(df, path, PLAYERS_PREVIEW_COLUMNS),
                   **load_to_snowflake(snowflake, df, path, "PLAYERS")}
+    )
+
+
+@dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_rosters(snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """One row per player, team and season, from nflreadpy.load_rosters(), FIRST_SEASON on.
+
+    Small (about 3,100 rows a season), so it's loaded whole each time, like contracts, instead
+    of partitioned like play-by-play: rosters for past seasons rarely change, and one table
+    makes "this roster now against 2018" a single query.
+    """
+    df = nfl.load_rosters(list(range(FIRST_SEASON, CURRENT_SEASON + 1)))
+
+    path = RAW_DIR / "rosters.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+    return dg.MaterializeResult(
+        metadata={**parquet_metadata(df, path, ROSTERS_PREVIEW_COLUMNS),
+                  **load_to_snowflake(snowflake, df, path, "ROSTERS")}
     )
 
 

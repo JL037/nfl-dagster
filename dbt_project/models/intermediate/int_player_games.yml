@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: int_player_games
+    description: One row per player, game and role (passer, rusher, receiver), regular season.
+    columns:
+      - name: player_game_role_key
+        data_tests:
+          - unique
+          - not_null
+      - name: role
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['passer', 'rusher', 'receiver']
+
+unit_tests:
+  - name: roles_split_without_double_counting
+    description: >
+      A scramble counts for the passer only, a designed run for the rusher, a completed pass
+      for both the passer and the target, and a sack for the passer only (no target).
+    model: int_player_games
+    given:
+      - input: ref('stg_pbp')
+        rows:
+          - {season: 2025, week: 1, game_id: G, season_type: REG, posteam: GB, epa: 0.5, success: 1, qb_dropback: 1, qb_scramble: 0, passer_id: QB, rusher_id: null, receiver_id: WR, rush_attempt: 0, pass_attempt: 1, sack: 0, complete_pass: 1, yards_gained: 12, pass_touchdown: 0, rush_touchdown: 0, interception: 0}
+          - {season: 2025, week: 1, game_id: G, season_type: REG, posteam: GB, epa: -1.5, success: 0, qb_dropback: 1, qb_scramble: 0, passer_id: QB, rusher_id: null, receiver_id: null, rush_attempt: 0, pass_attempt: 1, sack: 1, complete_pass: 0, yards_gained: -7, pass_touchdown: 0, rush_touchdown: 0, interception: 0}
+          - {season: 2025, week: 1, game_id: G, season_type: REG, posteam: GB, epa: 0.3, success: 1, qb_dropback: 1, qb_scramble: 1, passer_id: QB, rusher_id: QB, receiver_id: null, rush_attempt: 1, pass_attempt: 0, sack: 0, complete_pass: 0, yards_gained: 6, pass_touchdown: 0, rush_touchdown: 0, interception: 0}
+          - {season: 2025, week: 1, game_id: G, season_type: REG, posteam: GB, epa: 0.2, success: 1, qb_dropback: 0, qb_scramble: 0, passer_id: null, rusher_id: RB, receiver_id: null, rush_attempt: 1, pass_attempt: 0, sack: 0, complete_pass: 0, yards_gained: 5, pass_touchdown: 0, rush_touchdown: 0, interception: 0}
+    expect:
+      rows:
+        - {player_game_role_key: QB-G-passer, plays: 3, yards: 11, completions: 1}
+        - {player_game_role_key: RB-G-rusher, plays: 1, yards: 5, completions: 0}
+        - {player_game_role_key: WR-G-receiver, plays: 1, yards: 12, completions: 1}
