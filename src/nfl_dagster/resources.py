@@ -5,6 +5,8 @@ import dagster as dg
 from dagster_dbt import DbtCliResource, DbtProject
 from dagster_snowflake import SnowflakeResource
 
+from nfl_dagster.serving import ServingPostgresResource
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Which warehouse environment this process works against. Set it in the shell (the Makefile
@@ -38,3 +40,8 @@ snowflake_resource = SnowflakeResource(
 
 # dbt picks the matching target from profiles.yml (dev -> NFL_DEV, prod -> NFL).
 dbt_resource = DbtCliResource(project_dir=dbt_project, target=NFL_ENV)
+
+# The serving database (Prisma Postgres) the website reads. Dev and prod are separate
+# databases, chosen by NFL_ENV like everything above: a branch never publishes to prod.
+SERVING_DB_URL_VAR = f"SERVING_DB_URL_{NFL_ENV.upper()}"
+serving_resource = ServingPostgresResource(url=dg.EnvVar(SERVING_DB_URL_VAR))

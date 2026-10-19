@@ -8,6 +8,7 @@ dependencies = [
     "dagster>=1.13",
     "dagster-webserver>=1.13",
     "dagster-snowflake",
+    "psycopg[binary]",
     "dagster-dbt",
     "dbt-snowflake",
     "nflreadpy>=0.1.5",

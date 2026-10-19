@@ -2,9 +2,10 @@ import dagster as dg
 
 from nfl_dagster.assets.dbt import nfl_dbt_models
 from nfl_dagster.assets.raw import raw_contracts, raw_pbp, raw_schedules, raw_teams
+from nfl_dagster.assets.serving import publish_marts
 from nfl_dagster.checks import raw_pbp_unique_plays, raw_schedules_scores_present
 from nfl_dagster.partitions import CURRENT_SEASON
-from nfl_dagster.resources import dbt_resource, snowflake_resource
+from nfl_dagster.resources import dbt_resource, serving_resource, snowflake_resource
 
 # Runs only the raw checks, without re-materializing the assets they check.
 # The UI can't yet execute a partitioned check on its own (Dagster 1.13: "not yet supported"),
@@ -53,7 +54,7 @@ contracts_schedule = dg.ScheduleDefinition(
 
 
 defs = dg.Definitions(
-    assets=[raw_teams, raw_contracts, raw_pbp, raw_schedules, nfl_dbt_models],
+    assets=[raw_teams, raw_contracts, raw_pbp, raw_schedules, nfl_dbt_models, publish_marts],
     asset_checks=[raw_pbp_unique_plays, raw_schedules_scores_present],
     jobs=[raw_data_checks, current_season_refresh, contracts_refresh],
     schedules=[current_season_schedule, contracts_schedule],
@@ -61,5 +62,6 @@ defs = dg.Definitions(
         # Keys must match the parameter names assets ask for (e.g. `dbt: DbtCliResource`).
         "dbt": dbt_resource,
         "snowflake": snowflake_resource,
+        "serving": serving_resource,
     },
 )

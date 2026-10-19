@@ -17,6 +17,7 @@ jobs:
       SNOWFLAKE_PRIVATE_KEY_PATH: /dev/null
       SNOWFLAKE_ROLE: ci-placeholder
       SNOWFLAKE_WAREHOUSE: ci-placeholder
+      SERVING_DB_URL_DEV: ci-placeholder
       NFL_ENV: dev
     steps:
       - uses: actions/checkout@v4
