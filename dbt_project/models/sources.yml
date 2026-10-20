@@ -42,6 +42,16 @@ sources:
             dagster:
               asset_key: ["raw_players"]
 
+      - name: rosters
+        description: >
+          One row per player, team and season (nflreadpy.load_rosters), every season from 2015,
+          loaded whole each time. position is the group (OL, WR, ...); depth_chart_position is
+          the spot (T, G, C for linemen). gsis_id is play-by-play's player id.
+        config:
+          meta:
+            dagster:
+              asset_key: ["raw_rosters"]
+
       - name: contracts
         description: >
           One row per contract (nflreadpy.load_contracts, OverTheCap via nflverse), loaded whole

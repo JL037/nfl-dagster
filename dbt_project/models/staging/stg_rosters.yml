@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_rosters
+    description: Season rosters, one row per player, team and season (2015 on).
+    columns:
+      - name: roster_key
+        description: player_id, team and season joined.
+        data_tests:
+          - unique
+          - not_null
+
+unit_tests:
+  - name: old_team_codes_and_positions_are_normalized
+    description: >
+      2015 rosters use old team codes (BLT, SD, OAK, SL, ...) and specific positions (T, G, CB)
+      instead of groups. Teams get play-by-play's codes (the same code across a relocation),
+      positions their group, and the specific spot stays in position_spot.
+    model: stg_rosters
+    given:
+      - input: source('raw', 'rosters')
+        rows:
+          - {gsis_id: A, team: BLT, season: 2015, full_name: A, position: T, depth_chart_position: null, birth_date: "1990-01-01"}
+          - {gsis_id: B, team: OAK, season: 2018, full_name: B, position: OL, depth_chart_position: G, birth_date: "1990-01-01"}
+          - {gsis_id: C, team: SL, season: 2015, full_name: C, position: CB, depth_chart_position: null, birth_date: "1990-01-01"}
+          - {gsis_id: D, team: PHI, season: 2025, full_name: D, position: WR, depth_chart_position: WR, birth_date: "1990-01-01"}
+    expect:
+      rows:
+        - {roster_key: A-BAL-2015, team: BAL, position: OL, position_spot: T}
+        - {roster_key: B-LV-2018, team: LV, position: OL, position_spot: G}
+        - {roster_key: C-LA-2015, team: LA, position: DB, position_spot: CB}
+        - {roster_key: D-PHI-2025, team: PHI, position: WR, position_spot: WR}

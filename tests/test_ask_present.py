@@ -178,6 +178,15 @@ def test_short_name_alone_is_still_shown():
     assert data_table(QueryResult(columns=["passer_name"], rows=[("J.Love",)], truncated=False))["columns"] == ["passer_name"]
 
 
+@pytest.mark.parametrize(("column", "value", "shown"), [
+    ("ol_avg_years_exp", 5.2857, "5.3"),
+    ("ol_avg_age", 27.04, "27.0"),
+    ("years_exp", 7, "7"),
+])
+def test_experience_and_age_read_as_years(column, value, shown):
+    assert format_value(column, value) == shown
+
+
 def test_the_axis_reaches_past_the_largest_value():
     # 0.295 sits more than half a step past 0.2: the axis used to stop there, and the top bar
     # (usually the answer) ran off the chart with its value label cut.

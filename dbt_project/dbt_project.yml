@@ -26,6 +26,14 @@ models:
       +meta:
         dagster:
           group: staging
+    # Intermediate models: building blocks the marts share, too big or too fine to publish
+    # (int_player_games is one row per player per game). Tables, in NFL.INTERMEDIATE.
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+      +meta:
+        dagster:
+          group: intermediate
     # Marts are what people query: store them as real tables.
     marts:
       +materialized: table

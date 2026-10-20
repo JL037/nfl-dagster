@@ -25,7 +25,22 @@ select
     cast(qb_scramble as integer) as qb_scramble,
     -- passer / passer_id include scrambles; passer_player_name does not.
     passer_id,
-    passer as passer_name
+    passer as passer_name,
+    -- Who ran and who was targeted (null when nobody was), for the player marts.
+    rusher_player_id as rusher_id,
+    receiver_player_id as receiver_id,
+    cast(rush_attempt as integer) as rush_attempt,
+    cast(pass_attempt as integer) as pass_attempt,
+    cast(sack as integer) as sack,
+    cast(qb_hit as integer) as qb_hit,
+    cast(complete_pass as integer) as complete_pass,
+    cast(interception as integer) as interception,
+    cast(pass_touchdown as integer) as pass_touchdown,
+    cast(rush_touchdown as integer) as rush_touchdown,
+    yards_gained,
+    -- Runs only: left / middle / right, and the gap (end, tackle, guard) for left and right.
+    run_location,
+    run_gap
 from {{ source('raw', 'pbp') }}
 where play_type in ('pass', 'run')
     -- coalesce: a NULL flag means "not flagged", so keep the play rather than drop it.

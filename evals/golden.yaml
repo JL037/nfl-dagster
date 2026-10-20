@@ -105,7 +105,6 @@
   contains_any: [estimate, in progress, so far, not complete, incomplete, partial, not final, still]
 
 # Out of scope: the data can't answer these. The right reply is "We don't have the data".
-- {id: mahomes_touchdowns, question: "How many touchdowns did Patrick Mahomes throw in 2024?", expect: no_data}
 - {id: super_bowl_pick, question: "Who will win the Super Bowl this season?", expect: no_data}
 - {id: college_qb, question: "Which college quarterback was the best value in 2025?", expect: no_data}
 - {id: injuries, question: "Which quarterback missed the most games to injury in 2025?", expect: no_data}
@@ -126,8 +125,10 @@
   question: Which team covered the spread most often in 2024, and how many times?
   expect: answer
   # Regular season only, unless the question says playoffs (rule 8).
+  # team_name too, so "LA Chargers" counts as naming LAC (the team check accepts the nickname).
   truth: >
-    select team, count(*) as covers from (
+    select team, (select max(team_name) from team_season_epa t where t.team = c.team) as team_name,
+      count(*) as covers from (
       select home_team as team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'home'
       union all
       select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
@@ -191,6 +192,51 @@
 # More out of scope, the kinds of thing "ask anything about the NFL" invites.
 - {id: fantasy_start, question: "Which quarterback should I start in fantasy this week?", expect: no_data}
 - {id: other_league, question: "Who was the best quarterback in the CFL in 2024?", expect: no_data}
-- {id: rushing_yards, question: "Which running back had the most rushing yards in 2024?", expect: no_data}
 - {id: head_coach, question: "Who is the Cowboys' head coach?", expect: no_data}
 - {id: draft_pick, question: "Who will the Giants draft first next year?", expect: no_data}
+
+- id: det_most_efficient_receiver_2025
+  question: Who was the Lions' most efficient receiver in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and team = 'DET' and role = 'receiver' order by epa_per_play desc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: phi_most_consistent_2025
+  question: Which Eagles player was the most consistent in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and team = 'PHI' order by positive_game_share desc, game_epa_per_play_sd asc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: rb_150_most_consistent_2025
+  question: Which running back with at least 150 carries was the most consistent in 2025?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2025 and role = 'rusher' and plays >= 150 order by positive_game_share desc, game_epa_per_play_sd asc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: phi_roster_2018_still_2026
+  question: How many players on the Eagles' 2026 roster were also on their 2018 roster?
+  expect: answer
+  truth: >
+    select count(*) as n from team_rosters a join team_rosters b on a.player_id = b.player_id
+    where a.team = 'PHI' and a.season = 2018 and b.team = 'PHI' and b.season = 2026
+  checks: [{column: n, kind: count}]
+
+- id: phi_det_sack_rate_2025
+  question: Which offensive line allowed the lower sack rate in 2025, the Eagles' or the Lions'?
+  expect: answer
+  truth: select team, team_name from team_offensive_line where season = 2025 and team in ('PHI', 'DET') order by sack_rate limit 1
+  checks: [{column: team, kind: team}]
+
+# Was out of scope ("we don't have the data") until player_season_efficiency added passing TDs.
+- id: mahomes_touchdowns
+  question: How many touchdowns did Patrick Mahomes throw in 2024?
+  expect: answer
+  truth: select touchdowns from player_season_efficiency where season = 2024 and role = 'passer' and player_name = 'Patrick Mahomes'
+  checks: [{column: touchdowns, kind: count}]
+
+# Was out of scope until player_season_efficiency added rushers' yards.
+- id: rushing_yards
+  question: Which running back had the most rushing yards in 2024?
+  expect: answer
+  truth: select player_name from player_season_efficiency where season = 2024 and role = 'rusher' and position = 'RB' order by yards desc limit 1
+  checks: [{column: player_name, kind: full_name}]

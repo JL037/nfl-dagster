@@ -12,7 +12,7 @@ from nfl_dagster.assets.serving import SERVED_MARTS, SERVING_AUTOMATION_CONDITIO
 from nfl_dagster.definitions import contracts_schedule, current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
-RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players"}
+RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players", "raw_rosters"}
 DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
@@ -20,12 +20,18 @@ DBT_ASSETS = {
     "staging/stg_fourth_downs",
     "staging/stg_cap_hits",
     "staging/stg_players",
+    "staging/stg_rosters",
     "staging/league_salary_caps",
+    "intermediate/int_player_games",
     "marts/team_season_epa",
     "marts/qb_season_epa",
     "marts/game_results_vs_spread",
     "marts/team_fourth_down",
     "marts/qb_contract_value",
+    "marts/player_season_efficiency",
+    "marts/team_player_leaders",
+    "marts/team_rosters",
+    "marts/team_offensive_line",
 }
 
 # One serving asset per published mart: the copy the website reads.
@@ -73,7 +79,9 @@ def test_checks(asset_graph):
     # which dagster-dbt turns into asset checks.
     # dbt unit tests (unit_tests: in the YAML) are not asset checks; they run inside dbt build.
     # +3 for players: unique and not_null on stg_players.player_id, not_null on passer_full_name.
-    assert len(checks) == 48
+    # +15 for rosters, player games, player efficiency, leaders and offensive line: unique and
+    # not_null on each key (12), accepted_values on role (2), not_null player_name (1).
+    assert len(checks) == 63
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -96,6 +104,16 @@ def test_checks(asset_graph):
         ("staging/stg_teams", {"raw_teams"}),
         ("staging/stg_cap_hits", {"raw_contracts"}),
         ("staging/stg_players", {"raw_players"}),
+        ("staging/stg_rosters", {"raw_rosters"}),
+        # One row per player x game x role (passer, rusher, receiver); not published.
+        ("intermediate/int_player_games", {"staging/stg_pbp"}),
+        (
+            "marts/player_season_efficiency",
+            {"intermediate/int_player_games", "staging/stg_players", "staging/stg_schedules"},
+        ),
+        ("marts/team_player_leaders", {"marts/player_season_efficiency"}),
+        ("marts/team_rosters", {"staging/stg_rosters"}),
+        ("marts/team_offensive_line", {"staging/stg_pbp", "staging/stg_rosters", "staging/stg_teams"}),
         (
             "marts/qb_contract_value",
             {
@@ -170,7 +188,7 @@ def test_contracts_refresh_job_and_schedule():
     """Contracts and players aren't partitioned, so they can't share current_season_refresh; they
     get their own job on the same Monday/Tuesday/Friday schedule, so all raw data refreshes together."""
     job = defs.resolve_job_def("contracts_refresh")
-    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players"}
+    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players", "raw_rosters"}
     assert job.partitions_def is None
     assert contracts_schedule.cron_schedule == current_season_schedule.cron_schedule
     assert contracts_schedule.execution_timezone == "America/Los_Angeles"
@@ -182,3 +200,15 @@ def test_players_load_is_audited_for_missing_and_duplicate_ids():
     from nfl_dagster.assets.raw import AUDITS
 
     assert set(AUDITS["PLAYERS"]) == {"missing_gsis_id", "duplicate_gsis_id"}
+
+
+def test_rosters_load_is_audited_for_duplicate_rows():
+    """One row per player, team and season: a duplicate would double a player in a roster."""
+    from nfl_dagster.assets.raw import AUDITS
+
+    assert set(AUDITS["ROSTERS"]) == {"duplicate_player_team_season"}
+
+
+def test_intermediate_models_are_not_served():
+    """int_player_games is ~200K rows a refresh; the site only needs the season marts built on it."""
+    assert not any(key.startswith("serving/intermediate") for key in SERVING_ASSETS)

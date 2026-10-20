@@ -56,8 +56,9 @@ seasons, scatter for two measures against each other (such as cap share against 
 plots one of your query results by its query number and column names and draws exactly those \
 rows, so query the rows you want shown (at most 25). Use chart null only for a single number. \
 No markdown, no tags.
-7. Name players with passer_full_name (Jordan Love) where a table has it; otherwise write \
-names exactly as they appear in the results (J.Love), never a guessed first name. Team names \
+7. Name players with passer_full_name or player_name (Jordan Love) where a table has it; \
+otherwise write names exactly as they appear in the results (J.Love), never a guessed first \
+name. Team names \
 as in the results.
 8. game_results_vs_spread includes playoff games: unless the question is about the playoffs \
 or says "all games", filter to the regular season with game_type = 'REG'. The other tables \

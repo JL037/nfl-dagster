@@ -109,6 +109,113 @@ models:
 # what we expect. Unlike the data tests above, they test the logic, not the data, so they
 # can cover cases the real data doesn't have yet (no played game is missing a spread today).
 # They run in Snowflake (dbt build / dbt test), with the inputs as literal rows.
+
+  - name: player_season_efficiency
+    description: >
+      Efficiency and consistency per player, regular season and role (passer, rusher,
+      receiver), with the player's team, full name and position. Rows meet a volume minimum
+      (200 dropbacks, 150 rushes or 50 targets in a full season, pro-rated in progress).
+      Definitions, including "most consistent", are in the SQL.
+    columns:
+      - name: player_season_role_key
+        description: player_id, season and role joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: Full name (e.g. Amon-Ra St. Brown). Use this name when writing about a player.
+        data_tests:
+          - not_null
+      - name: role
+        description: passer (every dropback), rusher (designed runs only) or receiver (targets).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["passer", "rusher", "receiver"]
+      - name: team
+        description: The team he made the most plays for in this role that season.
+      - name: position
+        description: Position from nflverse's player table (QB, RB, WR, TE, ...).
+      - name: epa_per_play
+        description: EPA per dropback (passer), per designed rush (rusher) or per target (receiver).
+      - name: success_rate
+        description: Share of his plays in this role that nflverse counts as successful.
+      - name: completions
+        description: Passes completed (passer) or caught (receiver); 0 for rushers.
+      - name: completion_rate
+        description: completions / plays for passers and receivers (catch rate); null for rushers.
+      - name: qualifying_games
+        description: Games with at least 10 dropbacks, 5 rushes or 3 targets; consistency is measured over these.
+      - name: positive_game_share
+        description: >
+          Share of qualifying games with positive total EPA. Higher = more consistent. Most runs
+          lose EPA, so rushers' shares are much lower than receivers' or passers': compare it
+          within a role.
+      - name: game_epa_per_play_sd
+        description: Standard deviation of EPA per play across qualifying games. Lower = steadier.
+
+  - name: team_player_leaders
+    description: >
+      Per team, regular season and role, the most efficient player (highest epa_per_play) and
+      the most consistent (highest positive_game_share, ties broken by the lower
+      game_epa_per_play_sd), among players meeting player_season_efficiency's minimums.
+    columns:
+      - name: team_season_role_key
+        description: team, season and role joined.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: team_rosters
+    description: >
+      Season rosters, one row per player, team and season (2015 on): position, linemen's spot
+      (position_spot T, G, C), status, experience, age, college and draft. Compare two seasons
+      by joining on player_id (e.g. who is still on the roster since 2018).
+    columns:
+      - name: roster_key
+        description: player_id, team and season joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: position
+        description: Position group (QB, RB, WR, TE, OL, DL, LB, DB, K, P, LS).
+      - name: position_spot
+        description: Specific spot, e.g. T, G or C for offensive linemen.
+      - name: status
+        description: ACT = active roster; other values are reserve, injured, practice squad and similar.
+      - name: age
+        description: Age in whole years on September 1 of the season.
+      - name: years_exp
+        description: Years of NFL experience.
+      - name: draft_number
+        description: Overall draft pick; null for undrafted players.
+
+  - name: team_offensive_line
+    description: >
+      Offensive line results per team and regular season: pass protection (sack and QB-hit
+      rates per dropback), run blocking on designed runs (EPA, success, yards per carry, stuff
+      and explosive rates, by direction), and the active linemen's count, experience and age.
+      Unit results that also reflect the QB, running back and scheme; no individual lineman
+      grades. Definitions are in the SQL.
+    columns:
+      - name: team_season_key
+        description: team and season joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: sack_rate
+        description: sacks / dropbacks. Lower is better pass protection.
+      - name: qb_hit_rate
+        description: Dropbacks where the QB was hit / dropbacks. Lower is better.
+      - name: rush_epa_per_play
+        description: EPA per designed run (no scrambles).
+      - name: stuff_rate
+        description: Share of designed runs for 0 yards or fewer. Lower is better.
+      - name: explosive_run_rate
+        description: Share of designed runs for 10 yards or more.
+      - name: ol_players
+        description: Active (ACT) offensive linemen on the season roster.
+
 unit_tests:
   - name: ats_result_covers_pushes_and_missing_spreads
     description: >
@@ -202,3 +309,28 @@ unit_tests:
       rows:
         - {qb_season_key: P1-2025, passer_name: J.Love, passer_full_name: Jordan Love}
         - {qb_season_key: P2-2025, passer_name: X.Unknown, passer_full_name: X.Unknown}
+
+  - name: consistency_counts_qualifying_games_only
+    description: >
+      Consistency is measured over qualifying games (5+ rushes for a rusher): a 1-rush game
+      doesn't count. Two of three qualifying games had positive EPA, so the share is 2/3.
+    model: player_season_efficiency
+    given:
+      - input: ref('stg_schedules')
+        rows:
+          - {season: 2025, game_type: REG, is_played: true}
+      - input: ref('int_player_games')
+        rows:
+          - {season: 2025, game_id: G1, role: rusher, player_id: RB, team: DET, plays: 10, epa: 2.0, successes: 6, yards: 50, completions: 0, touchdowns: 1, interceptions: 0}
+          - {season: 2025, game_id: G2, role: rusher, player_id: RB, team: DET, plays: 8, epa: -1.0, successes: 3, yards: 20, completions: 0, touchdowns: 0, interceptions: 0}
+          - {season: 2025, game_id: G3, role: rusher, player_id: RB, team: DET, plays: 6, epa: 0.6, successes: 3, yards: 30, completions: 0, touchdowns: 0, interceptions: 0}
+          - {season: 2025, game_id: G4, role: rusher, player_id: RB, team: DET, plays: 1, epa: -2.0, successes: 0, yards: -3, completions: 0, touchdowns: 0, interceptions: 0}
+      - input: ref('stg_players')
+        rows:
+          - {player_id: RB, player_name: Jahmyr Gibbs, position: RB}
+    overrides:
+      vars:
+        player_min_plays_scale: 0
+    expect:
+      rows:
+        - {player_season_role_key: RB-2025-rusher, player_name: Jahmyr Gibbs, team: DET, games: 4, plays: 25, qualifying_games: 3, positive_game_share: 0.6666666666666666}
