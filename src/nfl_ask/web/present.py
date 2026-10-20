@@ -3,7 +3,7 @@ form people expect (3.0%, $55.3M, 0.295), tables without internal keys, and each
 description from the dbt docs (the same source the model's catalog uses)."""
 
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from functools import cache
 from pathlib import Path
 
@@ -108,9 +108,13 @@ MART_COVERAGE = {
 }
 
 
-def coverage() -> str:
-    """What the data covers, as a phrase: "a, b, and c"."""
-    topics = list(MART_COVERAGE.values())
+def coverage(first_seasons: Mapping[str, int] | None = None) -> str:
+    """What the data covers, as a phrase: "a, b, and c". With each table's first season, a
+    topic that starts later than the rest says so: "quarterback contracts (since 2015)"."""
+    first_seasons = first_seasons or {}
+    start = min(first_seasons.values(), default=None)
+    topics = [topic + (f" (since {first_seasons[mart]})" if first_seasons.get(mart, start) != start else "")
+              for mart, topic in MART_COVERAGE.items()]
     return topics[0] if len(topics) == 1 else ", ".join(topics[:-1]) + ", and " + topics[-1]
 
 
