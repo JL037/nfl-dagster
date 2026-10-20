@@ -216,6 +216,60 @@ models:
       - name: ol_players
         description: Active (ACT) offensive linemen on the season roster.
 
+  - name: player_season_vs_league
+    description: >
+      Each qualifying player season (player_season_efficiency's minimums) next to that season's
+      league average for the same role, for comparing players across eras: use
+      epa_per_play_over_league, success_rate_over_league, yards_per_play_index and season_rank
+      rather than raw totals, which the era inflates or deflates.
+    columns:
+      - name: player_season_role_key
+        description: player_id, season and role joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: Full name. Use this name when writing about a player.
+      - name: role
+        description: passer (every dropback), rusher (designed runs only) or receiver (targets).
+      - name: epa_per_play_over_league
+        description: His EPA per play minus the league's in the same role that season. 0 = average.
+      - name: success_rate_over_league
+        description: His success rate minus the league's in the same role that season.
+      - name: yards_per_play_index
+        description: His yards per play as a share of the league's that season, x100. 100 = average.
+      - name: season_rank
+        description: Rank by epa_per_play among that season's qualifiers in the role (1 = best), out of qualifiers.
+
+  - name: player_careers
+    description: >
+      One row per player and role over every regular season in the data (1999 on): totals, career
+      efficiency against the league (each season's average weighted by his plays that season),
+      best season, and top-5 finishes. For "who was better" across eras, compare
+      epa_per_play_over_league, yards_per_play_index, top_5_seasons and the best season. When
+      is_partial_career is true, his career started before 1999 and only part of it is here:
+      say so in the answer.
+    columns:
+      - name: player_role_key
+        description: player_id and role joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: Full name. Use this name when writing about a player.
+      - name: is_partial_career
+        description: >
+          True when his NFL career started before 1999 (rookie_year earlier than the data), so
+          his earlier seasons aren't covered (Emmitt Smith: 1990-1998 missing).
+      - name: epa_per_play_over_league
+        description: Career EPA per play minus the league's on the same plays in the same seasons. 0 = average.
+      - name: yards_per_play_index
+        description: Career yards per play against the league's in the same seasons, x100. 100 = average.
+      - name: top_5_seasons
+        description: Qualifying seasons he ranked in the league's top 5 by EPA per play in this role.
+      - name: best_season
+        description: His qualifying season with the highest epa_per_play_over_league.
+
 unit_tests:
   - name: ats_result_covers_pushes_and_missing_spreads
     description: >
@@ -334,3 +388,59 @@ unit_tests:
     expect:
       rows:
         - {player_season_role_key: RB-2025-rusher, player_name: Jahmyr Gibbs, team: DET, games: 4, plays: 25, qualifying_games: 3, positive_game_share: 0.6666666666666666}
+
+  - name: league_baseline_includes_every_play_in_the_role
+    description: >
+      The league average is every play in the role that season (all players, qualifiers or
+      not): 3 rushers with 10, 10 and 20 rushes and EPA 1.5, -1 and 2 average 2.5/40 = 0.0625
+      per rush. A qualifier at 0.25 per rush is 0.1875 over the league, and ranks first.
+      (Values are exact in binary, so the comparison can't fail on rounding.)
+    model: player_season_vs_league
+    given:
+      - input: ref('int_player_games')
+        rows:
+          - {season: 2003, role: rusher, player_id: A, plays: 10, epa: 1.5, successes: 5, yards: 50}
+          - {season: 2003, role: rusher, player_id: B, plays: 10, epa: -1.0, successes: 3, yards: 30}
+          - {season: 2003, role: rusher, player_id: C, plays: 20, epa: 2.0, successes: 8, yards: 80}
+      - input: ref('player_season_efficiency')
+        rows:
+          - {player_season_role_key: C-2003-rusher, season: 2003, player_id: C, player_name: C, role: rusher, plays: 20, yards: 80, epa_per_play: 0.125, success_rate: 0.4, yards_per_play: 4.0, is_season_complete: true}
+          - {player_season_role_key: A-2003-rusher, season: 2003, player_id: A, player_name: A, role: rusher, plays: 10, yards: 50, epa_per_play: 0.25, success_rate: 0.5, yards_per_play: 5.0, is_season_complete: true}
+    expect:
+      rows:
+        - {player_season_role_key: A-2003-rusher, league_epa_per_play: 0.0625, epa_per_play_over_league: 0.1875, league_yards_per_play: 4.0, yards_per_play_index: 125.0, season_rank: 1, qualifiers: 2}
+        - {player_season_role_key: C-2003-rusher, league_epa_per_play: 0.0625, epa_per_play_over_league: 0.0625, league_yards_per_play: 4.0, yards_per_play_index: 100.0, season_rank: 2, qualifiers: 2}
+
+  - name: careers_are_measured_against_their_own_eras
+    description: >
+      A career is compared with the league on the same plays in the same seasons. E (rookie
+      1990, first here 1999) is a partial career; F (rookie 2005, first play here 2007) is not:
+      partial means the career started before the data (1999), not before his first play.
+      E: 1999 8 rushes, EPA 2 (league 0.0/rush, 5.0 yd); 2000 8 rushes, EPA 0 (league -0.125,
+      6.25 yd). Over the league: (2 - (0*8 + -0.125*8)) / 16 = 0.1875. Yards index: 90 / (40 + 50) x100 = 100.
+    model: player_careers
+    given:
+      - input: ref('int_player_games')
+        rows:
+          - {season: 1999, role: rusher, player_id: E, game_id: G1, plays: 8, epa: 2.0, yards: 40, touchdowns: 1}
+          - {season: 1999, role: rusher, player_id: X, game_id: G1, plays: 8, epa: -2.0, yards: 40, touchdowns: 0}
+          - {season: 2000, role: rusher, player_id: E, game_id: G2, plays: 8, epa: 0.0, yards: 50, touchdowns: 0}
+          - {season: 2000, role: rusher, player_id: X, game_id: G2, plays: 8, epa: -2.0, yards: 50, touchdowns: 0}
+          - {season: 2007, role: passer, player_id: F, game_id: G3, plays: 20, epa: 1.0, yards: 150, touchdowns: 1}
+      - input: ref('player_season_vs_league')
+        rows:
+          - {player_id: E, role: rusher, season: 1999, epa_per_play_over_league: 0.2, season_rank: 3}
+          - {player_id: E, role: rusher, season: 2000, epa_per_play_over_league: 0.1, season_rank: 8}
+      - input: ref('stg_rosters')
+        rows:
+          - {player_id: E, rookie_year: 1990}
+          - {player_id: F, rookie_year: 2005}
+      - input: ref('stg_players')
+        rows:
+          - {player_id: E, player_name: Emmitt Smith, position: RB}
+          - {player_id: F, player_name: F, position: QB}
+    expect:
+      rows:
+        - {player_role_key: E-rusher, player_name: Emmitt Smith, first_season: 1999, last_season: 2000, rookie_year: 1990, is_partial_career: true, seasons: 2, plays: 16, yards: 90, touchdowns: 1, epa_per_play_over_league: 0.1875, yards_per_play_index: 100.0, qualifying_seasons: 2, top_5_seasons: 1, best_season: 1999}
+        - {player_role_key: X-rusher, player_name: X, is_partial_career: false, qualifying_seasons: 0, top_5_seasons: 0}
+        - {player_role_key: F-passer, player_name: F, first_season: 2007, rookie_year: 2005, is_partial_career: false, qualifying_seasons: 0}

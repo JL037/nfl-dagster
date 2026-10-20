@@ -32,6 +32,8 @@ DBT_ASSETS = {
     "marts/team_player_leaders",
     "marts/team_rosters",
     "marts/team_offensive_line",
+    "marts/player_season_vs_league",
+    "marts/player_careers",
 }
 
 # One serving asset per published mart: the copy the website reads.
@@ -81,7 +83,8 @@ def test_checks(asset_graph):
     # +3 for players: unique and not_null on stg_players.player_id, not_null on passer_full_name.
     # +15 for rosters, player games, player efficiency, leaders and offensive line: unique and
     # not_null on each key (12), accepted_values on role (2), not_null player_name (1).
-    assert len(checks) == 63
+    # +4 for the cross-era marts: unique and not_null on each key.
+    assert len(checks) == 67
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -113,6 +116,13 @@ def test_checks(asset_graph):
         ),
         ("marts/team_player_leaders", {"marts/player_season_efficiency"}),
         ("marts/team_rosters", {"staging/stg_rosters"}),
+        # Across eras: each season against its own league average, and careers built from them.
+        ("marts/player_season_vs_league", {"marts/player_season_efficiency", "intermediate/int_player_games"}),
+        (
+            "marts/player_careers",
+            {"intermediate/int_player_games", "marts/player_season_vs_league", "staging/stg_rosters",
+             "staging/stg_players"},
+        ),
         ("marts/team_offensive_line", {"staging/stg_pbp", "staging/stg_rosters", "staging/stg_teams"}),
         (
             "marts/qb_contract_value",
