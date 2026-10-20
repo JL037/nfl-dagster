@@ -3,7 +3,7 @@ form people expect (3.0%, $55.3M, 0.295), tables without internal keys, and each
 description from the dbt docs (the same source the model's catalog uses)."""
 
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from functools import cache
 from pathlib import Path
 
@@ -108,9 +108,13 @@ MART_COVERAGE = {
 }
 
 
-def coverage() -> str:
-    """What the data covers, as a phrase: "a, b, and c"."""
-    topics = list(MART_COVERAGE.values())
+def coverage(first_seasons: Mapping[str, int] | None = None) -> str:
+    """What the data covers, as a phrase: "a, b, and c". With each table's first season, a
+    topic that starts later than the rest says so: "quarterback contracts (since 2015)"."""
+    first_seasons = first_seasons or {}
+    start = min(first_seasons.values(), default=None)
+    topics = [topic + (f" (since {first_seasons[mart]})" if first_seasons.get(mart, start) != start else "")
+              for mart, topic in MART_COVERAGE.items()]
     return topics[0] if len(topics) == 1 else ", ".join(topics[:-1]) + ", and " + topics[-1]
 
 
@@ -169,7 +173,7 @@ def format_value(column: str, value, decimals: int | None = None) -> str:
 
 
 # A column shown only when its fuller version isn't in the same result.
-SUPERSEDED_BY = {"passer_name": "passer_full_name"}
+SUPERSEDED_BY = {"passer_name": "passer_full_name", "team": "team_name"}
 
 
 def fuller(column: str, columns: Sequence[str]) -> str:
@@ -197,7 +201,8 @@ def subject_rows(result: QueryResult, headline: str) -> list[int]:
     """The rows the headline is about: those named by the first name the headline mentions
     ("Drake Maye was..." picks the D.Maye rows). Matched on the surname, so short and full names
     both work; names under three letters (team codes like NE) aren't matched, so nothing is."""
-    words = re.findall(r"[\w'’-]+", headline.lower())
+    # Possessives count as the name: "the Eagles' line", "Maye's season".
+    words = [re.sub(r"['’]s?$", "", w) for w in re.findall(r"[\w'’-]+", headline.lower())]
     found = {}
     for i, row in enumerate(result.rows):
         surname = re.split(r"[\s.]+", row_name(result.columns, row).strip().lower())[-1]

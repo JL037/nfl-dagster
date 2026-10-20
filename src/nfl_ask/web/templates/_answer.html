@@ -4,8 +4,9 @@
 <article class="result no_data">
   <p class="asked">{{ question }}</p>
   <h2 class="headline">{{ result.text }}</h2>
-  <p class="explanation">We'd rather say so than guess. Right now our data covers every game since
-    2015: {{ coverage }}. Try rephrasing, or ask about one of those.</p>
+  <p class="explanation">We'd rather say so than guess. Right now our data covers {% if since %}every
+    season from {{ since }} to today{% else %}these topics{% endif %}: {{ coverage }}. Try rephrasing,
+    or ask about one of those.</p>
 </article>
 {% else %}
 <article class="result answered">

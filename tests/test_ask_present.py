@@ -238,3 +238,28 @@ def test_charts_and_tables_use_full_names_first():
                        rows=[("J.Love", "Jordan Love", 0.18)], truncated=False)
     assert "Jordan Love" in render_chart(bar(), both)
     assert data_table(both, first=["passer_name", "epa_over_expected"])["columns"] == ["passer_full_name", "epa_over_expected"]
+
+
+TEAMS = QueryResult(columns=["team", "team_name", "off_epa_per_play"],
+                    rows=[("BAL", "Baltimore Ravens", 0.22), ("BUF", "Buffalo Bills", 0.19)], truncated=False)
+
+
+def test_team_names_replace_team_codes_in_tables():
+    table = data_table(TEAMS)
+    assert table["columns"] == ["team_name", "off_epa_per_play"]  # one Team column, not two
+    assert table["rows"][0][0] == "Baltimore Ravens"
+
+
+def test_a_team_named_in_the_headline_is_the_subject():
+    assert subject_rows(TEAMS, "The Baltimore Ravens had the most efficient offense in 2024.") == [0]
+
+
+def test_possessives_still_name_the_subject():
+    assert subject_rows(TEAMS, "The Bills' offense was second.") == [1]
+    assert subject_rows(LEADERS, "Maye's season was the best value.") == [0]
+
+
+def test_charts_label_teams_by_name():
+    svg = render_chart({"kind": "bar", "query": 1, "x": "team", "y": "off_epa_per_play", "series": None,
+                        "title": "Offense EPA per play"}, TEAMS, subject=[0])
+    assert "Baltimore Ravens" in svg and ">BAL<" not in svg
