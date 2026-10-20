@@ -168,7 +168,7 @@ models:
 
   - name: team_rosters
     description: >
-      Season rosters, one row per player, team and season (2015 on): position, linemen's spot
+      Season rosters, one row per player, team and season (1999 on): position, linemen's spot
       (position_spot T, G, C), status, experience, age, college and draft. Compare two seasons
       by joining on player_id (e.g. who is still on the roster since 2018).
     columns:

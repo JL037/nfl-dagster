@@ -63,7 +63,7 @@ The [pull requests](https://github.com/JL037/nfl-dagster/pulls?q=is%3Apr+is%3Acl
 
 ## What it does
 
-1. **Extract:** downloads play-by-play, schedules, and team data for the 2015 through current NFL seasons, plus player contracts, using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
+1. **Extract:** downloads play-by-play, schedules, and team data for the 1999 through current NFL seasons, plus player contracts, using [`nflreadpy`](https://github.com/nflverse/nflreadpy).
 2. **Land:** writes each season to its own Parquet file under `data/raw/`. These files are the source of truth (the "lake").
 3. **Load, audit, publish:** uploads each file to a Snowflake stage, copies it into a raw table replacing exactly that season's rows, and audits the new rows **before committing**. A bad delivery is rolled back and never becomes visible.
 4. **Validate:** runs Dagster asset checks against each season in Snowflake, such as "no duplicate plays" and "scores are either both present or both missing."
@@ -177,7 +177,7 @@ nfl-dagster/
 │   └── setup.sql               # One-time Snowflake setup: warehouse, database, role, service user
 ├── src/nfl_dagster/
 │   ├── definitions.py          # Entry point: the Dagster Definitions object
-│   ├── partitions.py           # Season partitions (2015 → current season)
+│   ├── partitions.py           # Season partitions (1999 → current season)
 │   ├── resources.py            # NFL_ENV → database + dbt target; SnowflakeResource, dbt resource
 │   ├── snowflake_load.py       # load_parquet(): PUT, COPY INTO, audit, then commit (or roll back)
 │   ├── serving.py              # publish_table(): stage, audit, swap into the serving Postgres (or roll back)
