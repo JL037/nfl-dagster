@@ -1,0 +1,12 @@
+{% if notice %}
+<p class="share-notice" role="status">{{ notice }}</p>
+{% else %}
+<div class="share-box">
+  <label for="share-link">Anyone with this link can see this answer for the next {{ hours }} hours.</label>
+  <div class="share-row">
+    <input id="share-link" readonly value="{{ path }}" data-share-path="{{ path }}">
+    <button type="button" class="pdf" data-copy>Copy</button>
+  </div>
+  <p class="share-note">The link stops working and the answer is deleted on {{ expires | when }}.</p>
+</div>
+{% endif %}

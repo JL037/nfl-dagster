@@ -13,8 +13,18 @@
   <p class="print-only print-head">Ask the NFL · answered {{ asked_on }}</p>
   <div class="answer-top">
     <p class="asked">{{ question }}</p>
-    <button type="button" class="pdf" data-pdf data-title="NFL answer – {{ question }}">Download PDF</button>
+    <div class="answer-actions">
+      {% if share %}
+      <form class="share-form" hx-post="/share" hx-target="next .share-result" hx-swap="innerHTML">
+        <input type="hidden" name="payload" value="{{ share.payload }}">
+        <input type="hidden" name="signature" value="{{ share.signature }}">
+        <button type="submit" class="pdf">Share link</button>
+      </form>
+      {% endif %}
+      <button type="button" class="pdf" data-pdf data-title="NFL answer – {{ question }}">Download PDF</button>
+    </div>
   </div>
+  {% if share %}<div class="share-result" aria-live="polite"></div>{% endif %}
   <h2 class="headline">{{ result.headline or result.text }}</h2>
   {% if result.explanation %}<p class="explanation">{{ result.explanation }}</p>{% endif %}
   {% if stats %}

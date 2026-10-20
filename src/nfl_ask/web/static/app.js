@@ -77,3 +77,22 @@ document.addEventListener("htmx:afterSettle", (event) => {
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   event.detail.target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
 });
+
+// Share link: show the full address (the server sends the path), select it, and copy on click.
+document.addEventListener("htmx:afterSettle", (event) => {
+  const input = event.detail.target.querySelector("[data-share-path]");
+  if (!input) return;
+  input.value = new URL(input.dataset.sharePath, window.location.origin).href;
+  input.select();
+});
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+  const input = button.parentElement.querySelector("input");
+  try {
+    await navigator.clipboard.writeText(input.value);
+    button.textContent = "Copied";
+  } catch {
+    input.select();  // no clipboard access: leave it selected to copy by hand
+  }
+});

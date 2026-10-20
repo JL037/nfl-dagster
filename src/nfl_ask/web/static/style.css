@@ -91,6 +91,20 @@ body:has(#loading.htmx-request) #answer { display: none; }
 .pdf { flex: none; padding: 5px 12px; border: 1px solid var(--border); background: transparent;
        color: var(--fg-2); font-size: 0.85rem; font-weight: 600; }
 .pdf:hover { color: var(--accent); }
+.answer-actions { display: flex; gap: 8px; flex: none; }
+.share-form { margin: 0; }
+.share-result:empty { display: none; }
+.share-result { margin: 12px 0 16px; }
+.share-box { background: var(--tint); border-radius: 12px; padding: 12px 14px; }
+.share-box label { display: block; font-size: 0.9rem; color: var(--fg-2); margin-bottom: 8px; }
+.share-row { display: flex; gap: 8px; }
+.share-row input { flex: 1; min-width: 0; font: inherit; font-size: 0.9rem; padding: 6px 10px; border: 1px solid var(--border);
+                   border-radius: 8px; background: var(--surface); color: var(--fg); }
+.share-note, .share-notice { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
+.shared-banner { background: var(--tint); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px;
+                 font-size: 0.9rem; color: var(--fg-2); margin: 0 0 16px; }
+.shared-banner a, .masthead h1 a { color: inherit; }
+.masthead h1 a { text-decoration: none; }
 .pdf:hover { border-color: var(--accent); }
 .print-only { display: none; }
 .headline { font: 700 2rem/1.1 var(--display); margin: 0 0 10px; letter-spacing: 0.005em; }
@@ -196,7 +210,8 @@ footer p { margin: 4px 0; }
   @page { margin: 14mm 14mm 16mm; }
   body { background: #fff; font-size: 10.5pt; }
   main { max-width: none; padding: 0; }
-  body::before, main > header, .ask, .examples, #loading, footer, .pdf { display: none !important; }
+  body::before, main > header, .ask, .examples, #loading, footer, .pdf, .share-form, .share-result,
+  .shared-banner { display: none !important; }
   #answer { margin: 0; }
   .result { border: 0; padding: 0; }
   .print-only { display: block; }
