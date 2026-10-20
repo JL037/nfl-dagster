@@ -56,13 +56,36 @@ def catalog_text(columns: dict[str, list[tuple[str, str]]], project_root: Path =
     return "\n\n".join(sections)
 
 
-def build_catalog(conn, project_root: Path = PROJECT_ROOT) -> str:
-    """The catalog for the tables currently served (read from the serving database)."""
-    rows = conn.execute(
+def served_columns(conn) -> list[tuple[str, str, str]]:
+    """Every served table's columns, in order: (table, column, type)."""
+    return [tuple(row) for row in conn.execute(
         "select table_name, column_name, data_type from information_schema.columns"
         " where table_schema = 'marts' order by table_name, ordinal_position"
-    ).fetchall()
+    ).fetchall()]
+
+
+def grouped(rows: list[tuple[str, str, str]]) -> dict[str, list[tuple[str, str]]]:
     columns: dict[str, list[tuple[str, str]]] = {}
     for table, column, data_type in rows:
         columns.setdefault(table, []).append((column, data_type))
-    return catalog_text(columns, project_root)
+    return columns
+
+
+def build_catalog(conn, project_root: Path = PROJECT_ROOT) -> str:
+    """The catalog for the tables currently served (read from the serving database)."""
+    return catalog_text(grouped(served_columns(conn)), project_root)
+
+
+class LiveCatalog:
+    """The catalog, kept in step with the database: each question checks the served columns
+    (one small query) and the text is rebuilt only when they changed, such as a new mart's
+    first publish. Unchanged, it's the same text, so the model's prompt cache still hits."""
+
+    def __init__(self, project_root: Path = PROJECT_ROOT):
+        self.project_root, self.rows, self.text = project_root, None, ""
+
+    def __call__(self, conn) -> str:
+        rows = served_columns(conn)
+        if rows != self.rows:
+            self.text, self.rows = catalog_text(grouped(rows), self.project_root), rows
+        return self.text

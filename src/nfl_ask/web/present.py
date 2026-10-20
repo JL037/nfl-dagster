@@ -169,7 +169,7 @@ def format_value(column: str, value, decimals: int | None = None) -> str:
 
 
 # A column shown only when its fuller version isn't in the same result.
-SUPERSEDED_BY = {"passer_name": "passer_full_name"}
+SUPERSEDED_BY = {"passer_name": "passer_full_name", "team": "team_name"}
 
 
 def fuller(column: str, columns: Sequence[str]) -> str:
@@ -197,7 +197,8 @@ def subject_rows(result: QueryResult, headline: str) -> list[int]:
     """The rows the headline is about: those named by the first name the headline mentions
     ("Drake Maye was..." picks the D.Maye rows). Matched on the surname, so short and full names
     both work; names under three letters (team codes like NE) aren't matched, so nothing is."""
-    words = re.findall(r"[\w'’-]+", headline.lower())
+    # Possessives count as the name: "the Eagles' line", "Maye's season".
+    words = [re.sub(r"['’]s?$", "", w) for w in re.findall(r"[\w'’-]+", headline.lower())]
     found = {}
     for i, row in enumerate(result.rows):
         surname = re.split(r"[\s.]+", row_name(result.columns, row).strip().lower())[-1]

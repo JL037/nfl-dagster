@@ -213,7 +213,7 @@ def create_production_app() -> FastAPI:
     import psycopg
 
     from nfl_ask.agent import answer_question
-    from nfl_ask.catalog import build_catalog
+    from nfl_ask.catalog import LiveCatalog
     from nfl_ask.query import run_query
 
     env = os.getenv("NFL_ENV", "dev")
@@ -230,12 +230,13 @@ def create_production_app() -> FastAPI:
         # website's pooled URL) can't keep track of across connections.
         return psycopg.connect(url, autocommit=True, prepare_threshold=None)
 
+    catalog = LiveCatalog()  # the served tables and their definitions, current on every question
     with connect() as conn:
-        catalog = build_catalog(conn)  # the served tables and their definitions, read once
+        catalog(conn)  # fail at startup, not on the first question, if the database is unreachable
 
     def ask(question: str) -> AskResult:
         with connect() as conn:
-            return answer_question(question, client=client, catalog=catalog,
+            return answer_question(question, client=client, catalog=catalog(conn),
                                    query_fn=lambda sql, params: run_query(conn, sql, params))
 
     def freshness() -> dict[str, datetime]:
