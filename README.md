@@ -328,7 +328,7 @@ One thing a clone doesn't copy: **Dagster's run history.** `NFL_DEV` has every s
 
 **Working in git worktrees** (several branches, or several agent sessions, at once):
 
-1. Worktrees go under `worktrees/` in the main checkout (git ignores it), never inside another worktree.
+1. Worktrees go under `worktrees/` in the main checkout (git ignores it), never inside another worktree. (Older worktrees in `~/Projects/nfl-dagster-worktrees/` predate this; finish them where they are.)
 2. A new worktree starts from the latest `main` unless the work needs another base: fetch, then rebase onto whichever of local `main` and `origin/main` is ahead.
 3. Install the project in the worktree before running anything (`python -m venv .venv && .venv/bin/pip install -e ".[dev]"`, plus dbt on the `PATH` for the tests). Don't count on the main checkout's environment resolving from a worktree.
 4. Do all the work in the worktree, never in the main checkout.

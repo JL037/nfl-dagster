@@ -150,8 +150,10 @@
 - id: example_ats_2024
   question: Which team covered the spread most often in 2024?
   expect: answer
+  # team_name too, so "LA Chargers" counts as naming LAC (the team check accepts the nickname).
   truth: >
-    select team, count(*) as covers from (
+    select team, (select max(team_name) from team_season_epa t where t.team = c.team) as team_name,
+      count(*) as covers from (
       select home_team as team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'home'
       union all
       select away_team from game_results_vs_spread where season = 2024 and game_type = 'REG' and ats_result = 'away'
@@ -168,7 +170,11 @@
   checks: [{column: passer_name, kind: name}]
 
 # Broad questions the data can answer one reasonable way (rule 1): answered, not no_data.
-- {id: broad_best_qb, question: "Who's the best quarterback in the NFL right now?", expect: answer}
+- id: broad_best_qb
+  question: Who's the best quarterback in the NFL right now?
+  expect: answer
+  # "Right now" is the current season (rule 1), so the answer must say it's still in progress.
+  contains_any: [estimate, in progress, so far, not complete, incomplete, partial, not final, still]
 - {id: broad_best_defense, question: "Which team has the best defense?", expect: answer}
 - {id: broad_most_improved, question: "Which team improved the most from 2024 to 2025?", expect: answer}
 
