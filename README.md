@@ -432,6 +432,8 @@ The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/task
 | --- | --- | --- | --- | --- |
 | `raw_pbp` | `RAW.PBP` | By season | `nflreadpy.load_pbp` | About 48k plays and 372 columns per season |
 | `raw_schedules` | `RAW.SCHEDULES` | By season | `nflreadpy.load_schedules` | One row per game, including betting lines |
+| `raw_player_stats` | `RAW.PLAYER_STATS` | By season | `nflreadpy.load_player_stats` | One row per player and week: passing, rushing, receiving, defense, kicking (about 17k rows and 150 columns per season) |
+| `raw_team_stats` | `RAW.TEAM_STATS` | By season | `nflreadpy.load_team_stats` | One row per team and week (about 550 rows per season) |
 | `raw_teams` | `RAW.TEAMS` | No | `nflreadpy.load_teams` | Team names, conferences, divisions, colors |
 | `raw_contracts` | `RAW.CONTRACTS` | No | `nflreadpy.load_contracts` (OverTheCap) | One row per contract. Each player's season-by-season cap history is kept as nested `VARIANT` lists, flattened in staging |
 

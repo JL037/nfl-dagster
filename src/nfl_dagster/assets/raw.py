@@ -51,6 +51,21 @@ AUDITS = {
             "select count(*) - count(distinct game_id, play_id) from RAW.PBP where season = %s"
         ),
     },
+    # One row per player (or team), week and season type. Rows without a player_id (about 21
+    # a season, credited to "Team") or without a team (one 1999 fragment) are kept here, as
+    # nflverse delivers them, and left out in staging, so they're not counted.
+    "PLAYER_STATS": {
+        "duplicate_player_weeks": (
+            "select count(*) - count(distinct player_id, week, season_type)"
+            " from RAW.PLAYER_STATS where season = %s and player_id is not null"
+        ),
+    },
+    "TEAM_STATS": {
+        "duplicate_team_weeks": (
+            "select count(*) - count(distinct team, week, season_type)"
+            " from RAW.TEAM_STATS where season = %s and team is not null"
+        ),
+    },
     "SCHEDULES": {
         "mismatched_scores": (
             "select count_if((home_score is null) <> (away_score is null))"
@@ -227,6 +242,28 @@ def write_season(df: pl.DataFrame, name: str, season: int, preview_columns: list
 
 # partitions_def splits this asset into one slice per season ("2016" ... "2026").
 # Each run materializes a single partition, and the UI tracks every season separately.
+@dg.asset(partitions_def=season_partitions, group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_player_stats(context: dg.AssetExecutionContext, snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """Box-score stats for one season, one row per player and week (nflreadpy.load_player_stats):
+    passing, rushing, receiving, defense, kicking and returns. Every season 1999-2026 has the
+    same columns and types, so nothing needs pinning."""
+    season = int(context.partition_key)
+    df = nfl.load_player_stats([season], summary_level="week")
+    return dg.MaterializeResult(
+        metadata=write_season(df, "player_stats", season, ["season", "week", "player_display_name", "team", "passing_yards", "rushing_yards"], snowflake)
+    )
+
+
+@dg.asset(partitions_def=season_partitions, group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_team_stats(context: dg.AssetExecutionContext, snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """Box-score stats for one season, one row per team and week (nflreadpy.load_team_stats)."""
+    season = int(context.partition_key)
+    df = nfl.load_team_stats([season], summary_level="week")
+    return dg.MaterializeResult(
+        metadata=write_season(df, "team_stats", season, ["season", "week", "team", "passing_yards", "rushing_yards"], snowflake)
+    )
+
+
 @dg.asset(partitions_def=season_partitions, group_name="raw", kinds={"python", "parquet", "snowflake"})
 def raw_pbp(context: dg.AssetExecutionContext, snowflake: SnowflakeResource) -> dg.MaterializeResult:
     """Play-by-play for one season, from nflreadpy.load_pbp(). One row per play."""

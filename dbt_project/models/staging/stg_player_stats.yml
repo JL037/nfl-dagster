@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: stg_player_stats
+    description: Box-score stats, one row per player, week and season type (1999 on).
+    columns:
+      - name: player_week_key
+        description: player_id, season, week and season type joined.
+        data_tests:
+          - unique
+          - not_null

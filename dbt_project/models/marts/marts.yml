@@ -270,6 +270,55 @@ models:
       - name: best_season
         description: His qualifying season with the highest epa_per_play_over_league.
 
+  - name: player_season_stats
+    description: >
+      Season box-score totals per player and season type (REG = regular season, POST =
+      playoffs), 1999 on: passing, rushing and receiving yards and touchdowns, defense (tackles,
+      sacks, interceptions, forced fumbles), kicking. Use for counting stats ("most rushing
+      yards", "how many sacks"); for efficiency use player_season_efficiency, and to compare
+      eras, player_season_vs_league. Filter season_type = 'REG' unless the question is about
+      the playoffs.
+    columns:
+      - name: player_season_type_key
+        description: player_id, season and season type joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: Full name. Use this name when writing about a player.
+      - name: season_type
+        description: REG (regular season) or POST (playoffs).
+      - name: team
+        description: The team he played the most games for that season.
+      - name: games
+        description: Games with a stat line.
+      - name: tackles
+        description: Solo tackles plus assists.
+      - name: sacks
+        description: Sacks made (defense); half sacks count as 0.5.
+      - name: sacks_taken
+        description: Times sacked (as a passer).
+      - name: interceptions
+        description: Interceptions made (defense). interceptions_thrown is for passers.
+
+  - name: team_season_stats
+    description: >
+      Season box-score totals per team and season type (REG, POST), 1999 on: passing and
+      rushing yards and touchdowns, turnovers, sacks, interceptions, penalties, field goals.
+      Filter season_type = 'REG' unless the question is about the playoffs.
+    columns:
+      - name: team_season_type_key
+        description: team, season and season type joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: Full team name. Use it when writing about a team.
+      - name: turnovers
+        description: Interceptions thrown plus fumbles lost.
+      - name: sacks
+        description: Sacks made by the defense. sacks_taken is the offense being sacked.
+
 unit_tests:
   - name: ats_result_covers_pushes_and_missing_spreads
     description: >
@@ -448,3 +497,35 @@ unit_tests:
         - {player_role_key: X-rusher, player_name: X, first_season: 1999, last_season: 2000, rookie_year: null, is_partial_career: false, seasons: 2, plays: 16, yards: 90, touchdowns: 0, epa_per_play_over_league: -0.1875, yards_per_play_index: 100.0, qualifying_seasons: 0, top_5_seasons: 0, best_season: null}
         # F is 2007's only passer, so he is the league average.
         - {player_role_key: F-passer, player_name: F, first_season: 2007, last_season: 2007, rookie_year: 2005, is_partial_career: false, seasons: 1, plays: 20, yards: 150, touchdowns: 1, epa_per_play_over_league: 0.0, yards_per_play_index: 100.0, qualifying_seasons: 0, top_5_seasons: 0, best_season: null}
+
+  - name: season_stats_sum_weeks_and_keep_the_main_team
+    description: >
+      A player's season is the sum of his weeks, by season type, and his team is the one he
+      played the most games for: 2 games for BUF and 1 for KC is BUF. Playoff weeks stay apart.
+    model: player_season_stats
+    given:
+      - input: ref('stg_player_stats')
+        rows:
+          - {season: 2010, week: 1, season_type: REG, player_id: P, player_name: Pat, position: RB, position_group: RB, team: BUF, carries: 20, rushing_yards: 100, rushing_tds: 1, receptions: 2, receiving_yards: 10, def_tackles_solo: 0, def_tackle_assists: 0, def_sacks: 0}
+          - {season: 2010, week: 2, season_type: REG, player_id: P, player_name: Pat, position: RB, position_group: RB, team: BUF, carries: 10, rushing_yards: 30, rushing_tds: 0, receptions: 0, receiving_yards: 0, def_tackles_solo: 0, def_tackle_assists: 0, def_sacks: 0}
+          - {season: 2010, week: 9, season_type: REG, player_id: P, player_name: Pat, position: RB, position_group: RB, team: KC, carries: 10, rushing_yards: 70, rushing_tds: 2, receptions: 1, receiving_yards: 5, def_tackles_solo: 0, def_tackle_assists: 0, def_sacks: 0}
+          - {season: 2010, week: 19, season_type: POST, player_id: P, player_name: Pat, position: RB, position_group: RB, team: KC, carries: 15, rushing_yards: 60, rushing_tds: 0, receptions: 0, receiving_yards: 0, def_tackles_solo: 0, def_tackle_assists: 0, def_sacks: 0}
+    expect:
+      rows:
+        - {player_season_type_key: P-2010-REG, team: BUF, games: 3, carries: 40, rushing_yards: 200, rushing_tds: 3, yards_per_carry: 5.0, receptions: 3, receiving_yards: 15}
+        - {player_season_type_key: P-2010-POST, team: KC, games: 1, carries: 15, rushing_yards: 60, rushing_tds: 0, yards_per_carry: 4.0, receptions: 0, receiving_yards: 0}
+
+  - name: team_turnovers_are_interceptions_plus_fumbles_lost
+    description: Turnovers = interceptions thrown + fumbles lost, summed over the season's weeks.
+    model: team_season_stats
+    given:
+      - input: ref('stg_team_stats')
+        rows:
+          - {season: 2010, week: 1, season_type: REG, team: NYG, passing_interceptions: 2, fumbles_lost: 1, passing_yards: 250}
+          - {season: 2010, week: 2, season_type: REG, team: NYG, passing_interceptions: 1, fumbles_lost: 0, passing_yards: 300}
+      - input: ref('stg_teams')
+        rows:
+          - {team_abbr: NYG, team_name: New York Giants}
+    expect:
+      rows:
+        - {team_season_type_key: NYG-2010-REG, team_name: New York Giants, games: 2, interceptions_thrown: 3, fumbles_lost: 1, turnovers: 4, passing_yards: 550}
