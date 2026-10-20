@@ -11,10 +11,27 @@ from fastapi.testclient import TestClient
 from nfl_ask.agent import NO_DATA_MESSAGE, AskResult
 from nfl_ask.query import QueryRejected, validate_sql
 from nfl_ask.web import create_app
+from nfl_ask.query import QueryResult
 from nfl_ask.web.share import MemoryShares, Tickets
-from tests.test_ask_web import PUBLISHED, FakeAsk, answered
 
 START = datetime(2026, 10, 20, 7, 0, tzinfo=UTC)
+PUBLISHED = datetime(2026, 10, 19, 18, 34, tzinfo=UTC)
+LEADERS = QueryResult(columns=["passer_name", "epa_over_expected"], rows=[("D.Maye", 0.2953)], truncated=False)
+
+
+class FakeAsk:
+    def __init__(self, result):
+        self.result = result
+
+    def __call__(self, question):
+        return self.result
+
+
+def answered():
+    headline = "Drake Maye was the best value QB in 2025."
+    return AskResult(status="answered", text=headline, headline=headline, explanation="",
+                     queries=[("select passer_name, epa_over_expected from qb_contract_value", [])],
+                     results=[LEADERS])
 
 
 @pytest.fixture
