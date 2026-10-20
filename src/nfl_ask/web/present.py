@@ -47,6 +47,14 @@ LABELS = {
     "yards_per_carry": "Yards per carry", "stuff_rate": "Stuff rate",
     "explosive_run_rate": "Explosive run rate", "ol_players": "Linemen",
     "ol_avg_years_exp": "Linemen's avg years", "ol_avg_age": "Linemen's avg age",
+    # Across eras
+    "league_epa_per_play": "League EPA per play", "epa_per_play_over_league": "EPA per play vs league",
+    "league_success_rate": "League success rate", "success_rate_over_league": "Success rate vs league",
+    "league_yards_per_play": "League yards per play", "yards_per_play_index": "Yards per play index (100 = avg)",
+    "season_rank": "Rank that season", "qualifiers": "Qualifiers",
+    "first_season": "First season", "last_season": "Last season", "is_partial_career": "Career before 1999",
+    "seasons": "Seasons", "qualifying_seasons": "Qualifying seasons", "top_5_seasons": "Top-5 seasons",
+    "best_season": "Best season", "best_season_epa_per_play_over_league": "Best season vs league",
 }
 WORDS = {"epa": "EPA", "qb": "QB", "qbs": "QBs", "ats": "ATS", "id": "ID", "pct": "%", "avg": "Avg"}
 YEARLIKE = {"season", "week", "year"}
@@ -61,6 +69,8 @@ MART_NAMES = {
     "player_season_efficiency": "Player efficiency and consistency",
     "team_player_leaders": "Team leaders by role",
     "team_rosters": "Team rosters", "team_offensive_line": "Offensive lines",
+    "player_season_vs_league": "Player seasons against their league",
+    "player_careers": "Player careers",
 }
 
 
@@ -90,6 +100,8 @@ MART_SOURCES = {
     "team_player_leaders": ["pbp", "schedules", "players"],
     "team_rosters": ["rosters"],
     "team_offensive_line": ["pbp", "rosters", "teams"],
+    "player_season_vs_league": ["pbp", "schedules", "players"],
+    "player_careers": ["pbp", "players", "rosters"],
 }
 
 
@@ -105,6 +117,8 @@ MART_COVERAGE = {
     "team_player_leaders": "team leaders by position",
     "team_rosters": "team rosters",
     "team_offensive_line": "offensive line play",
+    "player_season_vs_league": "player seasons against their league",
+    "player_careers": "player careers compared across eras",
 }
 
 
