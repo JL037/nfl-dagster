@@ -442,5 +442,9 @@ unit_tests:
     expect:
       rows:
         - {player_role_key: E-rusher, player_name: Emmitt Smith, first_season: 1999, last_season: 2000, rookie_year: 1990, is_partial_career: true, seasons: 2, plays: 16, yards: 90, touchdowns: 1, epa_per_play_over_league: 0.1875, yards_per_play_index: 100.0, qualifying_seasons: 2, top_5_seasons: 1, best_season: 1999}
-        - {player_role_key: X-rusher, player_name: X, is_partial_career: false, qualifying_seasons: 0, top_5_seasons: 0}
-        - {player_role_key: F-passer, player_name: F, first_season: 2007, rookie_year: 2005, is_partial_career: false, qualifying_seasons: 0}
+        # Every expected row lists the same columns: dbt unions them, and Snowflake rejects a
+        # union whose rows differ ("invalid number of result columns for set operator").
+        # X: league is 0/rush (1999) and -0.125 (2000), so -1 on his 16 rushes: (-4 - -1) / 16.
+        - {player_role_key: X-rusher, player_name: X, first_season: 1999, last_season: 2000, rookie_year: null, is_partial_career: false, seasons: 2, plays: 16, yards: 90, touchdowns: 0, epa_per_play_over_league: -0.1875, yards_per_play_index: 100.0, qualifying_seasons: 0, top_5_seasons: 0, best_season: null}
+        # F is 2007's only passer, so he is the league average.
+        - {player_role_key: F-passer, player_name: F, first_season: 2007, last_season: 2007, rookie_year: 2005, is_partial_career: false, seasons: 1, plays: 20, yards: 150, touchdowns: 1, epa_per_play_over_league: 0.0, yards_per_play_index: 100.0, qualifying_seasons: 0, top_5_seasons: 0, best_season: null}
