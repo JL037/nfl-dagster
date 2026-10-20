@@ -2,7 +2,8 @@
 form people expect (3.0%, $55.3M, 0.295), tables without internal keys, and each mart's
 description from the dbt docs (the same source the model's catalog uses)."""
 
-from collections.abc import Sequence
+import re
+from collections.abc import Collection, Sequence
 from functools import cache
 from pathlib import Path
 
@@ -92,6 +93,27 @@ MART_SOURCES = {
 }
 
 
+# What each mart lets people ask about, for the "we don't have that" reply. A test keeps it
+# complete for every served mart, so the reply grows with the data.
+MART_COVERAGE = {
+    "qb_season_epa": "quarterback play (EPA and success rates)",
+    "qb_contract_value": "quarterback contracts and cap hits",
+    "team_season_epa": "team offense and defense",
+    "team_fourth_down": "fourth-down decisions",
+    "game_results_vs_spread": "scores and results against the spread",
+    "player_season_efficiency": "player efficiency and consistency",
+    "team_player_leaders": "team leaders by position",
+    "team_rosters": "team rosters",
+    "team_offensive_line": "offensive line play",
+}
+
+
+def coverage() -> str:
+    """What the data covers, as a phrase: "a, b, and c"."""
+    topics = list(MART_COVERAGE.values())
+    return topics[0] if len(topics) == 1 else ", ".join(topics[:-1]) + ", and " + topics[-1]
+
+
 def sources_for(tables) -> list[dict]:
     """The sources behind the marts an answer read, each once, in a stable order."""
     keys = {key for t in tables for key in MART_SOURCES.get(t, [])}
@@ -150,6 +172,11 @@ def format_value(column: str, value, decimals: int | None = None) -> str:
 SUPERSEDED_BY = {"passer_name": "passer_full_name"}
 
 
+def fuller(column: str, columns: Sequence[str]) -> str:
+    """The column as shown: its fuller version when the result has one (passer_full_name)."""
+    return SUPERSEDED_BY[column] if SUPERSEDED_BY.get(column) in columns else column
+
+
 def is_internal(column: str) -> bool:
     return column.endswith(("_key", "_id"))
 
@@ -158,11 +185,44 @@ def is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def data_table(result: QueryResult, max_rows: int = 25, first: Sequence[str] = ()) -> dict:
+def row_name(columns: Sequence[str], row) -> str:
+    """What a row is about: its first text column (a player or team), by the fuller name when
+    the result has one."""
+    named = [c for c, v in zip(columns, row) if isinstance(v, str) and not is_internal(c)]
+    named = [c for c in named if SUPERSEDED_BY.get(c) not in named] or named
+    return str(row[columns.index(named[0])]) if named else ""
+
+
+def subject_rows(result: QueryResult, headline: str) -> list[int]:
+    """The rows the headline is about: those named by the first name the headline mentions
+    ("Drake Maye was..." picks the D.Maye rows). Matched on the surname, so short and full names
+    both work; names under three letters (team codes like NE) aren't matched, so nothing is."""
+    words = re.findall(r"[\w'’-]+", headline.lower())
+    found = {}
+    for i, row in enumerate(result.rows):
+        surname = re.split(r"[\s.]+", row_name(result.columns, row).strip().lower())[-1]
+        if len(surname) >= 3 and surname in words:
+            found.setdefault(words.index(surname), []).append(i)
+    return found[min(found)] if found else []
+
+
+def key_stats(result: QueryResult, row: int, columns: Sequence[str], limit: int = 3) -> list[tuple[str, str]]:
+    """The subject's numbers, for the row of stats under the headline: the table's numeric
+    columns in its order (the charted measure first), seasons and weeks left out."""
+    values = dict(zip(result.columns, result.rows[row]))
+    stats = [(column_label(c), format_value(c, values[c])) for c in columns
+             if c not in YEARLIKE and is_number(values.get(c))]
+    return stats[:limit]
+
+
+def data_table(result: QueryResult, max_rows: int = 25, first: Sequence[str] = (),
+               subject: Collection[int] = ()) -> dict:
     """The rows behind an answer, ready for a table: readable headers and values, keys hidden,
-    the charted columns first, and columns that are the same in every row moved to a note."""
+    the charted columns first, and columns that are the same in every row moved to a note.
+    `subject` rows (the answer's) are marked so the page can highlight them."""
     keep = [i for i, c in enumerate(result.columns)
             if not is_internal(c) and SUPERSEDED_BY.get(c) not in result.columns] or list(range(len(result.columns)))
+    first = [fuller(c, result.columns) for c in first]
     keep.sort(key=lambda i: first.index(result.columns[i]) if result.columns[i] in first else len(first))
     constants = []
     if len(result.rows) > 1:
@@ -180,6 +240,7 @@ def data_table(result: QueryResult, max_rows: int = 25, first: Sequence[str] = (
         "labels": [column_label(c) for c in columns],
         "numeric": numeric,
         "rows": rows,
+        "subject": [i for i in subject if i < max_rows],
         "hidden": max(0, len(result.rows) - max_rows),
         "truncated": result.truncated,  # the query itself hit the row cap
     }

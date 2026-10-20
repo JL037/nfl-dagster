@@ -110,6 +110,18 @@ def test_the_data_is_shown_as_a_readable_table():
     assert "2025_maye" not in html  # internal keys stay out of the table
 
 
+def test_the_answers_subject_gets_its_key_numbers_and_a_highlighted_row():
+    html = client(FakeAsk(answered(chart=BAR))).post("/answer", data={"question": "q"}).text
+    stats = html[html.index('<dl class="stats">'):]
+    assert "EPA over expected" in stats and "0.295" in stats
+    assert html.count('<tr class="subject">') == 1  # D.Maye, named in the headline
+
+
+def test_no_key_numbers_when_the_headline_names_no_row():
+    html = client(FakeAsk(answered(text="Value was spread around in 2025."))).post("/answer", data={"question": "q"}).text
+    assert 'class="stats"' not in html and 'class="subject"' not in html
+
+
 def test_where_this_comes_from_uses_the_dbt_descriptions():
     html = client().post("/answer", data={"question": "q"}).text
     assert "Where this comes from" in html
@@ -119,7 +131,7 @@ def test_where_this_comes_from_uses_the_dbt_descriptions():
 def test_no_data_suggests_what_can_be_asked():
     ask = FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE, queries=[]))
     html = client(ask).post("/answer", data={"question": "Who wins the Super Bowl?"}).text
-    assert "Try asking about" in html
+    assert "rather say so than guess" in html and "Try rephrasing" in html
 
 
 def test_no_data_gets_the_standard_reply():
@@ -225,6 +237,15 @@ def test_every_served_mart_credits_its_sources():
     from nfl_ask.web.present import MART_SOURCES
     assert set(SERVED_MARTS) <= set(MART_SOURCES)
     assert all(MART_SOURCES[m] for m in SERVED_MARTS)
+
+
+def test_every_served_mart_says_what_it_covers():
+    """A new mart shows up in "our data covers..." on the no-data reply: add it to MART_COVERAGE."""
+    from nfl_dagster.assets.serving import SERVED_MARTS
+    from nfl_ask.web.present import MART_COVERAGE
+    assert set(SERVED_MARTS) <= set(MART_COVERAGE)
+    html = client(FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE))).post("/answer", data={"question": "q"}).text
+    assert all(MART_COVERAGE[m] in html for m in SERVED_MARTS)
 
 
 def test_the_footer_credits_the_data_and_its_license():

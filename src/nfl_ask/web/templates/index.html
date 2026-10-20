@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ask the NFL money question</title>
+  <title>Ask the NFL</title>
+  <link rel="preload" href="/static/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
   <!-- Show 429 (rate limited) messages; other 4xx/5xx are handled in app.js. -->
   <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "429", "swap": true}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
@@ -12,29 +13,34 @@
 </head>
 <body>
   <main>
-    <header>
-      <h1>Is the money buying performance?</h1>
-      <p class="lede">Ask about NFL quarterbacks, contracts and teams. Every answer comes from our
-        data, shows how it was found, and says so when we don't know.</p>
+    <header class="masthead">
+      <p class="kicker">NFL · Answered from the data</p>
+      <h1>Ask anything about the NFL.</h1>
+      <p class="lede">Players, teams, games, contracts, betting lines: ask it the way you'd ask a
+        friend. Every answer is built from real game data and shows exactly how it was found. If we
+        don't have the data, we'll tell you instead of guessing.</p>
     </header>
 
     <form class="ask" method="post" action="/answer"
           hx-post="/answer" hx-target="#answer" hx-indicator="#loading" hx-disabled-elt="find button">
       <label for="question" class="visually-hidden">Your question</label>
-      <textarea id="question" name="question" rows="2" maxlength="{{ max_chars }}" required
-                placeholder="Who was the best value QB in 2025?"></textarea>
+      <textarea id="question" name="question" rows="1" maxlength="{{ max_chars }}" required
+                enterkeyhint="send" placeholder="Ask anything about the NFL…"></textarea>
       <button type="submit">Ask</button>
     </form>
 
     <form class="examples" method="post" action="/answer"
           hx-post="/answer" hx-target="#answer" hx-indicator="#loading">
-      <span>Try:</span>
+      <span class="examples-label">Need a starting point?</span>
       {% for example in examples %}
       <button type="submit" name="question" value="{{ example }}">{{ example }}</button>
       {% endfor %}
     </form>
 
-    <p id="loading" class="htmx-indicator">{{ loading }}</p>
+    <div id="loading" class="htmx-indicator" aria-hidden="true">
+      <p>{{ loading }}</p>
+      <div class="skeleton"><span class="short"></span><span class="long"></span><span class="mid"></span><span class="block"></span></div>
+    </div>
     <section id="answer" aria-live="polite"></section>
 
     <footer>

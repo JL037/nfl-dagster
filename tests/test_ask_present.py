@@ -6,8 +6,9 @@ import re
 import pytest
 
 from nfl_ask.query import QueryResult
-from nfl_ask.web.charts import render_chart
-from nfl_ask.web.present import column_label, data_table, format_value, mart_docs
+from nfl_ask.web.charts import nice_ticks, render_chart
+from nfl_ask.web.present import (column_label, data_table, format_value, key_stats, mart_docs,
+                                 subject_rows)
 
 LEADERS = QueryResult(
     columns=["qb_season_key", "passer_name", "season", "cap_share", "cap_number", "epa_over_expected", "worth_it"],
@@ -184,3 +185,56 @@ def test_short_name_alone_is_still_shown():
 ])
 def test_experience_and_age_read_as_years(column, value, shown):
     assert format_value(column, value) == shown
+
+
+def test_the_axis_reaches_past_the_largest_value():
+    # 0.295 sits more than half a step past 0.2: the axis used to stop there, and the top bar
+    # (usually the answer) ran off the chart with its value label cut.
+    assert nice_ticks(-0.122, 0.2953)[-1] >= 0.2953
+    assert nice_ticks(0, 0.4) == [0, 0.1, 0.2, 0.3, 0.4]  # an exact top value isn't padded
+
+
+def test_the_top_bar_keeps_its_value_label():
+    tall = QueryResult(columns=["passer_name", "epa_over_expected"],
+                       rows=[("D.Maye", 0.2953), ("B.Young", -0.122)], truncated=False)
+    assert ">0.295<" in render_chart(bar(), tall)
+
+
+# --- The answer's subject ----------------------------------------------------------------------
+
+
+def test_the_headline_picks_out_its_subject_by_surname():
+    assert subject_rows(LEADERS, "Drake Maye was the best value QB in 2025.") == [0]
+    assert subject_rows(LEADERS, "Purdy edged out Maye.") == [1]  # the first one named
+    assert subject_rows(LEADERS, "Nobody stood out.") == []
+
+
+def test_full_names_are_matched_too():
+    both = QueryResult(columns=["passer_name", "passer_full_name", "epa_over_expected"],
+                       rows=[("J.Love", "Jordan Love", 0.18), ("J.Allen", "Josh Allen", 0.05)], truncated=False)
+    assert subject_rows(both, "Josh Allen was worth it.") == [1]
+
+
+def test_short_codes_are_not_matched():
+    teams = QueryResult(columns=["team", "go_pct"], rows=[("NE", 0.3), ("DET", 0.4)], truncated=False)
+    assert subject_rows(teams, "NE went for it least.") == []  # too short to match safely
+
+
+def test_key_stats_are_the_subjects_numbers_in_table_order():
+    table = data_table(LEADERS, first=["passer_name", "epa_over_expected"])
+    assert key_stats(LEADERS, 0, table["columns"]) == [
+        ("EPA over expected", "0.295"), ("Cap share", "3.0%"), ("Cap hit", "$8.2M")]
+
+
+def test_the_subject_is_highlighted_and_the_rest_recede():
+    svg = render_chart(bar(), LEADERS, subject=[0])
+    assert 'class="chart has-subject"' in svg
+    assert svg.count(" subject\"") >= 1 and 'class="bar pos subject"' in svg
+    assert 'class="chart"' in render_chart(bar(), LEADERS)  # no subject: every bar at full strength
+
+
+def test_charts_and_tables_use_full_names_first():
+    both = QueryResult(columns=["passer_name", "passer_full_name", "epa_over_expected"],
+                       rows=[("J.Love", "Jordan Love", 0.18)], truncated=False)
+    assert "Jordan Love" in render_chart(bar(), both)
+    assert data_table(both, first=["passer_name", "epa_over_expected"])["columns"] == ["passer_full_name", "epa_over_expected"]

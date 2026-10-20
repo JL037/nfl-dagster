@@ -1,11 +1,19 @@
-/* Fun but bland: one calm column, system fonts, one accent (the chart blue).
+/* One calm column with a little game-day character: a condensed display face for the big type
+   (Barlow Condensed, self-hosted, SIL OFL: barlow-condensed-OFL.txt), system fonts for reading,
+   and a turf-green accent for the interface (white on it is 6.0:1; dark text on the dark one, 8.8:1).
    Chart colors are the dataviz reference palette, checked with its validator in both modes:
-   series slots blue, orange, aqua; blue/red for values above and below zero. */
+   series slots blue, orange, aqua; blue/red for values above and below zero. The interface
+   accent stays out of the charts, so a color in a chart always means data. */
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap;
+             src: url("/static/barlow-condensed-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap;
+             src: url("/static/barlow-condensed-700.woff2") format("woff2"); }
 :root {
   color-scheme: light;
   --bg: #f9f9f7; --surface: #fcfcfb; --fg: #0b0b0b; --fg-2: #52514e; --muted: #898781;
   --line: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10); --code: #f1f0ec;
-  --accent: #2a78d6; --accent-fg: #ffffff;
+  --accent: #1a7146; --accent-fg: #ffffff; --tint: rgba(26, 113, 70, 0.08);
+  --display: "Barlow Condensed", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --pos: #2a78d6; --neg: #e34948;
 }
 @media (prefers-color-scheme: dark) {
@@ -13,7 +21,7 @@
     color-scheme: dark;
     --bg: #0d0d0d; --surface: #1a1a19; --fg: #f0efec; --fg-2: #c3c2b7; --muted: #898781;
     --line: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10); --code: #232321;
-    --accent: #3987e5; --accent-fg: #0b0b0b;
+    --accent: #4cc285; --accent-fg: #0b0b0b; --tint: rgba(76, 194, 133, 0.10);
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --pos: #3987e5; --neg: #e66767;
   }
 }
@@ -21,39 +29,80 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
        font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
-h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
-.lede { color: var(--fg-2); margin: 0 0 28px; }
+/* A strip of yard-line hash marks across the top of the page. */
+body::before { content: ""; display: block; height: 6px; background:
+  repeating-linear-gradient(90deg, transparent 0 38px, var(--bg) 38px 40px), var(--accent); }
+main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+.kicker { font: 600 0.8rem/1 var(--display); text-transform: uppercase; letter-spacing: 0.14em;
+          color: var(--accent); margin: 0 0 10px; }
+h1 { font: 700 2.75rem/1.05 var(--display); text-transform: uppercase; letter-spacing: 0.005em; margin: 0 0 12px; }
+.lede { color: var(--fg-2); margin: 0 0 28px; max-width: 60ch; }
+
+/* After the first answer the intro folds away, so the answer sits near the top (app.js). */
+.has-answer main { padding-top: 20px; }
+.has-answer .masthead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.has-answer .kicker { margin: 0; }
+.has-answer h1 { font-size: 1.35rem; margin: 0; }
+.has-answer .lede, .has-answer .examples { display: none; }
 
 /* Asking */
-.ask { display: flex; gap: 8px; }
-.ask textarea { flex: 1; font: inherit; padding: 12px 14px; border: 1px solid var(--border);
-                border-radius: 12px; background: var(--surface); color: var(--fg); resize: vertical; }
-.ask textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ask { display: flex; gap: 8px; padding: 6px; border: 1px solid var(--border); border-radius: 16px;
+       background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04); }
+.ask:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint); }
+.ask textarea { flex: 1; font: inherit; padding: 10px 10px; border: 0; background: transparent; color: var(--fg);
+                resize: none; min-height: 46px; max-height: 200px; line-height: 1.5; }
+.ask textarea:focus { outline: none; }
+.ask textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button { font: inherit; cursor: pointer; border-radius: 10px; }
-.ask button { padding: 0 24px; border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.ask button { padding: 0 26px; border: 0; background: var(--accent); color: var(--accent-fg);
+              font: 700 1.1rem/1 var(--display); text-transform: uppercase; letter-spacing: 0.06em; }
+.ask button:hover:not(:disabled) { filter: brightness(1.08); }
 button:disabled { opacity: 0.6; cursor: wait; }
-.examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 0;
-            color: var(--muted); font-size: 0.9rem; }
-.examples button { padding: 5px 12px; border: 1px solid var(--border); background: transparent;
-                   color: var(--fg); font-size: 0.9rem; }
-.examples button:hover { border-color: var(--accent); }
-.htmx-indicator { display: none; color: var(--fg-2); font-style: italic; margin: 28px 0 0; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.examples-label { flex-basis: 100%; font: 600 0.75rem/1 var(--display); text-transform: uppercase;
+                  letter-spacing: 0.12em; color: var(--muted); }
+.examples button { padding: 6px 12px; border: 1px solid var(--border); background: transparent;
+                   color: var(--fg-2); font-size: 0.88rem; text-align: left; }
+.examples button:hover:not(:disabled) { border-color: var(--accent); color: var(--fg); background: var(--tint); }
+
+/* Waiting: the line from the film room over the outline of an answer card. */
+.htmx-indicator { display: none; margin: 28px 0 0; }
 .htmx-request.htmx-indicator { display: block; }
+body:has(#loading.htmx-request) #answer { display: none; }
+#loading p { color: var(--fg-2); font-style: italic; margin: 0 0 10px; }
+.skeleton { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px 28px; }
+.skeleton span { display: block; height: 14px; border-radius: 7px; margin: 0 0 12px; background: var(--line);
+                 animation: pulse 1.4s ease-in-out infinite; }
+.skeleton .short { width: 30%; height: 10px; }
+.skeleton .long { width: 85%; height: 22px; }
+.skeleton .mid { width: 60%; }
+.skeleton .block { height: 180px; margin: 22px 0 0; border-radius: 10px; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .skeleton span { animation: none; } }
 
 /* The answer */
 #answer { margin-top: 28px; }
 .result { background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-          padding: 24px 28px 28px; }
+          padding: 24px 28px 28px; scroll-margin-top: 16px; }
+#answer { scroll-margin-top: 16px; }
 .answer-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .asked { color: var(--muted); font-size: 0.9rem; margin: 0 0 8px; }
 .pdf { flex: none; padding: 5px 12px; border: 1px solid var(--border); background: transparent;
-       color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+       color: var(--fg-2); font-size: 0.85rem; font-weight: 600; }
+.pdf:hover { color: var(--accent); }
 .pdf:hover { border-color: var(--accent); }
 .print-only { display: none; }
-.headline { font-size: 1.5rem; line-height: 1.3; margin: 0 0 10px; font-weight: 650; letter-spacing: -0.01em; }
+.headline { font: 700 2rem/1.1 var(--display); margin: 0 0 10px; letter-spacing: 0.005em; }
 .explanation { color: var(--fg-2); margin: 0; font-size: 1.05rem; }
-.no_data .headline { font-size: 1.25rem; }
+.no_data .headline { font-size: 1.5rem; }
+
+/* The subject's key numbers, under the headline. */
+.stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
+.stat { flex: 1 1 140px; padding: 12px 14px; border-radius: 12px; background: var(--tint);
+        border-left: 3px solid var(--accent); }
+.stat dt { color: var(--fg-2); font-size: 0.8rem; }
+.stat dd { margin: 2px 0 0; font: 700 1.9rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
 .notice { color: var(--fg-2); }
 .notice.limited, .notice.error { background: var(--surface); border: 1px solid var(--border);
                                  border-radius: 12px; padding: 14px 18px; color: var(--fg); }
@@ -71,6 +120,10 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .chart .bar.pos { fill: var(--pos); }
 .chart .bar.neg { fill: var(--neg); }
 .chart .bar:hover, .chart .dot:hover { opacity: 0.8; }
+/* The answer's subject at full strength, everything else stepped back (sign colors kept). */
+.chart.has-subject .bar:not(.subject), .chart.has-subject .dot:not(.subject) { opacity: 0.35; }
+.chart.has-subject .bar:not(.subject):hover, .chart.has-subject .dot:not(.subject):hover { opacity: 0.6; }
+.chart .label.subject { fill: var(--fg); font-weight: 700; }
 .chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart .dot { stroke: var(--surface); stroke-width: 2; }
 .chart .s1 { stroke: var(--s1); } .chart .dot.s1, .chart circle.key.s1 { fill: var(--s1); }
@@ -78,8 +131,10 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .chart .s3 { stroke: var(--s3); } .chart .dot.s3, .chart circle.key.s3 { fill: var(--s3); }
 .chart line.key { stroke-width: 2; }
 
-h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
-     margin: 28px 0 10px; font-weight: 650; }
+h3 { font: 600 0.85rem/1 var(--display); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+     margin: 28px 0 12px; }
+h3::before { content: ""; display: inline-block; width: 14px; height: 3px; margin: 0 8px 0.2em 0;
+             background: var(--accent); vertical-align: middle; }
 .data, .sources { border-top: 1px solid var(--line); margin-top: 24px; }
 .table-from, .table-note { color: var(--muted); font-size: 0.85rem; margin: 8px 0; }
 .table-wrap { overflow-x: auto; }
@@ -88,6 +143,8 @@ th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--lin
 th { color: var(--fg-2); font-weight: 600; font-size: 0.8rem; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: 0; }
+tr.subject td { background: var(--tint); font-weight: 650; }
+tr.subject td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 
 .mart h4 { margin: 0 0 4px; font-size: 1rem; }
 .mart .published { color: var(--muted); font-weight: 400; font-size: 0.85rem; margin-left: 6px; }
@@ -99,6 +156,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .credits a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); }
 .credits a:hover { color: var(--accent); }
 details.sql summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 0.9rem; }
+details.about > summary { cursor: pointer; list-style: none; }
+details.about > summary::-webkit-details-marker { display: none; }
+details.about > summary h3 { display: inline-block; }
+details.about > summary h3::after { content: "Show"; margin-left: 10px; color: var(--accent);
+                                    letter-spacing: 0.06em; font-size: 0.8rem; }
+details.about[open] > summary h3::after { content: "Hide"; }
 .step { margin-top: 12px; }
 pre { background: var(--code); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0;
       font-size: 0.82rem; white-space: pre-wrap; }
@@ -111,9 +174,14 @@ footer p { margin: 4px 0; }
                    clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 560px) {
   .result { padding: 18px 16px 20px; }
-  .headline { font-size: 1.3rem; }
-  .ask { flex-direction: column; }
-  .ask button { padding: 12px; }
+  h1 { font-size: 2.1rem; }
+  .headline { font-size: 1.6rem; }
+  .ask button { padding: 0 16px; }
+  .answer-top { flex-direction: column-reverse; align-items: flex-start; gap: 4px; }
+  /* Examples in one swipeable row instead of a tall stack. */
+  .examples { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding: 0 16px 4px; scrollbar-width: none; }
+  .examples-label { display: none; }
+  .examples button { flex: none; }
 }
 
 /* Download PDF: the print layout. Just the answer, its chart, data and sources, in light colors,
@@ -123,19 +191,23 @@ footer p { margin: 4px 0; }
     color-scheme: light;
     --bg: #ffffff; --surface: #ffffff; --fg: #0b0b0b; --fg-2: #52514e; --muted: #6f6e69;
     --line: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10); --code: #f4f3ef;
-    --accent: #2a78d6; --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --pos: #2a78d6; --neg: #e34948;
+    --accent: #1a7146; --tint: rgba(26, 113, 70, 0.08); --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --pos: #2a78d6; --neg: #e34948;
   }
   @page { margin: 14mm 14mm 16mm; }
   body { background: #fff; font-size: 10.5pt; }
   main { max-width: none; padding: 0; }
-  main > header, .ask, .examples, #loading, footer, .pdf { display: none !important; }
+  body::before, main > header, .ask, .examples, #loading, footer, .pdf { display: none !important; }
   #answer { margin: 0; }
   .result { border: 0; padding: 0; }
   .print-only { display: block; }
   .print-head { color: var(--muted); font-size: 9pt; margin: 0 0 6mm; padding-bottom: 2mm;
                 border-bottom: 1px solid var(--line); }
   .asked { font-size: 10pt; }
-  .headline { font-size: 16pt; }
+  .headline { font-size: 20pt; }
+  .stat { background: none; border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+  .stat dd { font-size: 16pt; }
+  details.about > summary h3::after { content: none; }
+  tr.subject td { background: none; }
   .explanation { font-size: 11pt; }
   .table-wrap { overflow: visible; }
   table { font-size: 8.5pt; }

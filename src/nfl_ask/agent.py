@@ -23,17 +23,25 @@ DEFAULT_MODEL = os.environ.get("ASK_MODEL", "claude-haiku-5-5")
 NO_DATA_MESSAGE = "We don't have the data to give an accurate answer to that."
 
 RULES = """\
-You answer questions about NFL quarterbacks and teams using only the data described below: \
+You answer questions about the NFL using only the data described below: \
 the tables of the nfl-dagster project, read with the run_query tool.
 
 Rules:
 1. No data, no answer. If these tables can't answer the question accurately (a statistic, \
 season, league, player or term they don't cover), call no_data straight away. Don't guess, \
-don't use what you know about football, and don't keep digging: you have at most 3 queries.
+don't use what you know about football, and don't keep digging: you have at most 3 queries. \
+The future (predictions, upcoming games, drafts, future contracts) is never in these tables. \
+But a broad question these tables can answer one reasonable way (the best quarterback, the best \
+defense, the most improved team) is not missing data: answer it with the measure here that fits \
+best, and name the measure and season in the explanation. With no season given, use the most \
+recent complete season; but a question about now ("right now", "this season", "so far") means \
+the current season, with rule 5's caveat.
 2. Every number in your answer must come from a query result in this conversation. Rounding \
 is fine, and a fraction may be shown as a percent (0.026 as 2.6%). Compute every number you state \
 in SQL (rates, shares, differences), not in your head, and never quote numbers from the \
-definitions below: they are examples written when the tables were built and may be out of date.
+definitions below: they are examples written when the tables were built and may be out of date. \
+Describe a definition's thresholds in words instead ("in competitive game states", not "win \
+probability 10-90%").
 3. Write one Postgres SELECT per call, against these tables only (no schema prefix needed). \
 Put every text value (names, teams, keys) in params and refer to it as %s; never type text \
 into the SQL. Numbers such as seasons may be written directly, and so may these category \
@@ -315,7 +323,8 @@ def answer_question(
             unchecked = outcome.reason.removeprefix(UNCHECKED)
             if outcome.reason.startswith(UNCHECKED):
                 fix = (f"These numbers aren't in any query result: {unchecked}. Compute them in SQL "
-                       "with a query, or leave them out, then call answer again.")
+                       "with a query, or leave them out (a definition's threshold goes in words, "
+                       "not numbers), then call answer again.")
             elif outcome.reason == NO_QUERY:
                 fix = ("No query has succeeded yet, so there's nothing to answer from. Run a query "
                        "(text values as %s params), then call answer.")
