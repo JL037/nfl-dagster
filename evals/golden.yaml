@@ -94,7 +94,7 @@
 - id: home_cover_share
   question: Across all games since 2015 that had a spread, how often did the home team cover?
   expect: answer
-  truth: select 100.0 * count(*) filter (where ats_result = 'home') / count(ats_result) as pct from game_results_vs_spread
+  truth: select 100.0 * count(*) filter (where ats_result = 'home') / count(ats_result) as pct from game_results_vs_spread where season >= 2015
   checks: [{column: pct, kind: percent, decimals: 1}]
 
 - id: best_value_2026_so_far

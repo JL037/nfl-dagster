@@ -1,5 +1,8 @@
 -- Which QBs produced the most for their share of the salary cap? One row per QB season
--- (every row of qb_season_epa), with that season's cap hit and a value score.
+-- (every row of qb_season_epa from the first season in league_salary_caps, 2015), with that
+-- season's cap hit and a value score. Earlier seasons are left out rather than kept with empty
+-- contract columns: play-by-play goes back to 1999, contract data doesn't, and the Ask page
+-- says how far back each table goes.
 --
 -- Definitions, measured on the 393 finished QB seasons (2015-2025) with a usable cap hit:
 --
@@ -51,6 +54,7 @@ with qb_seasons as (
         on caps.season = qb.season
     left join {{ ref('stg_teams') }} as teams
         on teams.team_abbr = qb.team
+    where qb.season >= (select min(season) from {{ ref('league_salary_caps') }})
 ),
 
 scored as (

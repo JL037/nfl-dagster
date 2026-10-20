@@ -153,15 +153,32 @@ def raw_rosters(snowflake: SnowflakeResource) -> dg.MaterializeResult:
     of partitioned like play-by-play: rosters for past seasons rarely change, and one table
     makes "this roster now against 2018" a single query.
     """
-    df = nfl.load_rosters(list(range(FIRST_SEASON, CURRENT_SEASON + 1)))
+    df, dropped = drop_id_only_duplicates(nfl.load_rosters(list(range(FIRST_SEASON, CURRENT_SEASON + 1))))
 
     path = RAW_DIR / "rosters.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(path)
     return dg.MaterializeResult(
         metadata={**parquet_metadata(df, path, ROSTERS_PREVIEW_COLUMNS),
+                  "duplicate_rows_dropped": dropped,
                   **load_to_snowflake(snowflake, df, path, "ROSTERS")}
     )
+
+
+# Other sites' ids for a player. nflverse's 1999-2011 rosters list 31 players twice for the
+# same team and season (Fred Taylor, JAX 1999), the two rows differing only in these.
+OTHER_SITE_IDS = ["espn_id", "sportradar_id", "rotowire_id", "pfr_id"]
+
+
+def drop_id_only_duplicates(df: pl.DataFrame) -> tuple[pl.DataFrame, int]:
+    """Keep one row of each player-team-season whose rows differ only in other sites' ids.
+
+    Only those: rows that differ in anything else stay, so the duplicate audit still rolls the
+    load back. Which copy survives is fixed (the smallest ids), so reloads load the same rows.
+    """
+    rest = [c for c in df.columns if c not in OTHER_SITE_IDS]
+    kept = df.sort(OTHER_SITE_IDS, nulls_last=True).unique(subset=rest, keep="first", maintain_order=True)
+    return kept, df.height - kept.height
 
 
 @dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
@@ -216,10 +233,13 @@ def raw_pbp(context: dg.AssetExecutionContext, snowflake: SnowflakeResource) -> 
     # The partition key is always a string, so convert it before handing it to nflreadpy.
     season = int(context.partition_key)
     df = nfl.load_pbp([season])
-    # goal_to_go is the only column whose type changes between seasons (Int32 in 7 seasons,
-    # Float64 in 2020 and 2024-2026). The Snowflake table takes its types from the first file
-    # loaded, so pin this one to Float64 so every season's file agrees.
-    df = df.with_columns(pl.col("goal_to_go").cast(pl.Float64))
+    # Two columns change type between seasons, and the Snowflake table takes its types from
+    # the first file loaded, so pin both so every season's file agrees:
+    # - goal_to_go: Int32 in most seasons, Float64 in 2020 and 2024-2026.
+    # - xyac_median_yardage: Float64 in 1999-2005, where it's always null (the expected-YAC
+    #   model starts in 2006), Int32 since. Whole yards, so Int32 loses nothing.
+    df = df.with_columns(pl.col("goal_to_go").cast(pl.Float64),
+                         pl.col("xyac_median_yardage").cast(pl.Int32))
     return dg.MaterializeResult(
         metadata=write_season(df, "pbp", season, PBP_PREVIEW_COLUMNS, snowflake)
     )

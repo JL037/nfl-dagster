@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: stg_rosters
-    description: Season rosters, one row per player, team and season (2015 on).
+    description: Season rosters, one row per player, team and season (1999 on).
     columns:
       - name: roster_key
         description: player_id, team and season joined.
@@ -14,7 +14,7 @@ unit_tests:
   - name: old_team_codes_and_positions_are_normalized
     description: >
       2015 rosters use old team codes (BLT, SD, OAK, SL, ...) and specific positions (T, G, CB)
-      instead of groups. Teams get play-by-play's codes (the same code across a relocation),
+      instead of groups, and 1999-2014 file kickers, punters and returners under SPEC, KR or PR. Teams get play-by-play's codes (the same code across a relocation),
       positions their group, and the specific spot stays in position_spot.
     model: stg_rosters
     given:
@@ -24,9 +24,16 @@ unit_tests:
           - {gsis_id: B, team: OAK, season: 2018, full_name: B, position: OL, depth_chart_position: G, birth_date: "1990-01-01"}
           - {gsis_id: C, team: SL, season: 2015, full_name: C, position: CB, depth_chart_position: null, birth_date: "1990-01-01"}
           - {gsis_id: D, team: PHI, season: 2025, full_name: D, position: WR, depth_chart_position: WR, birth_date: "1990-01-01"}
+          - {gsis_id: E, team: STL, season: 1999, full_name: E, position: SPEC, depth_chart_position: K, birth_date: "1970-01-01"}
+          - {gsis_id: F, team: SD, season: 2003, full_name: F, position: KR, depth_chart_position: WR, birth_date: "1980-01-01"}
+          - {gsis_id: G, team: CLE, season: 2001, full_name: G, position: SPEC, depth_chart_position: null, birth_date: "1975-01-01"}
     expect:
       rows:
         - {roster_key: A-BAL-2015, team: BAL, position: OL, position_spot: T}
         - {roster_key: B-LV-2018, team: LV, position: OL, position_spot: G}
         - {roster_key: C-LA-2015, team: LA, position: DB, position_spot: CB}
         - {roster_key: D-PHI-2025, team: PHI, position: WR, position_spot: WR}
+        # 1999-2014: SPEC (and KR, PR) with the real spot in depth_chart_position.
+        - {roster_key: E-LA-1999, team: LA, position: K, position_spot: K}
+        - {roster_key: F-LAC-2003, team: LAC, position: WR, position_spot: WR}
+        - {roster_key: G-CLE-2001, team: CLE, position: SPEC, position_spot: SPEC}
