@@ -70,7 +70,8 @@ def tables_read(sql: str) -> list[str]:
     return sorted({t.name for t in tree.find_all(exp.Table) if t.name and t.name not in ctes})
 
 
-def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
+def answer_view(result: AskResult, dates: Mapping[str, datetime],
+                first_seasons: Mapping[str, int] | None = None) -> dict:
     """What the answer fragment shows: the subject's key numbers, the chart, the data tables, and
     where each number came from."""
     steps, tables, marts, stats = [], [], {}, []
@@ -106,7 +107,8 @@ def answer_view(result: AskResult, dates: Mapping[str, datetime]) -> dict:
     # The charted data first: it's the table the chart is drawn from.
     tables.sort(key=lambda t: t["number"] != chart_number)
     return {"steps": steps, "tables": tables, "marts": list(marts.values()), "chart": chart_svg,
-            "sources": sources_for(marts), "stats": stats, "coverage": coverage()}
+            "sources": sources_for(marts), "stats": stats, "coverage": coverage(first_seasons),
+            "since": min((first_seasons or {}).values(), default=None)}
 
 
 def serving_url(env: str, environ: Mapping[str, str]) -> str:
@@ -125,6 +127,7 @@ def create_app(
     *,
     ask: Callable[[str], AskResult],
     freshness: Callable[[], Mapping[str, datetime]],
+    seasons: Callable[[], Mapping[str, int]] = dict,
     limiter: RateLimiter | None = None,
     trust_proxy: bool = False,
 ) -> FastAPI:
@@ -151,6 +154,14 @@ def create_app(
             log.warning("freshness lookup failed: %s", type(e).__name__)
             return {}
 
+    def first_seasons() -> Mapping[str, int]:
+        """Each served table's first season, so the page says how far back the data goes."""
+        try:
+            return seasons()
+        except Exception as e:  # the page still works; it just leaves the years out
+            log.warning("seasons lookup failed: %s", type(e).__name__)
+            return {}
+
     @app.get("/health", response_class=PlainTextResponse)
     def health():
         return "ok"  # for the host's health check: no database, no model
@@ -163,6 +174,7 @@ def create_app(
             "loading": random.choice(LOADING_LINES),
             # The oldest publication: every table is at least this fresh.
             "as_of": min(dates.values()) if dates else None,
+            "since": min(first_seasons().values(), default=None),
             "max_chars": MAX_QUESTION_CHARS,
         })
 
@@ -199,7 +211,7 @@ def create_app(
                        u.get("cache_read_input_tokens", 0), u.get("cache_creation_input_tokens", 0), haiku_cost(u))
 
         return fragment({"question": question, "result": result, "asked_on": day(datetime.now(PACIFIC)),
-                         **answer_view(result, published())})
+                         **answer_view(result, published(), first_seasons())})
 
     return app
 
@@ -211,9 +223,10 @@ def create_production_app() -> FastAPI:
     """
     import anthropic
     import psycopg
+    import psycopg.sql
 
     from nfl_ask.agent import answer_question
-    from nfl_ask.catalog import build_catalog
+    from nfl_ask.catalog import LiveCatalog
     from nfl_ask.query import run_query
 
     env = os.getenv("NFL_ENV", "dev")
@@ -230,17 +243,33 @@ def create_production_app() -> FastAPI:
         # website's pooled URL) can't keep track of across connections.
         return psycopg.connect(url, autocommit=True, prepare_threshold=None)
 
+    catalog = LiveCatalog()  # the served tables and their definitions, current on every question
     with connect() as conn:
-        catalog = build_catalog(conn)  # the served tables and their definitions, read once
+        catalog(conn)  # fail at startup, not on the first question, if the database is unreachable
 
     def ask(question: str) -> AskResult:
         with connect() as conn:
-            return answer_question(question, client=client, catalog=catalog,
+            return answer_question(question, client=client, catalog=catalog(conn),
                                    query_fn=lambda sql, params: run_query(conn, sql, params))
 
     def freshness() -> dict[str, datetime]:
         with connect() as conn:
             return dict(conn.execute("select table_name, published_at from marts._publications").fetchall())
 
-    return create_app(ask=ask, freshness=freshness, limiter=limiter,
+    first = {"published": None, "seasons": {}}  # recounted only when something is republished
+
+    def seasons() -> dict[str, int]:
+        with connect() as conn:
+            published = conn.execute("select count(*), max(published_at) from marts._publications").fetchone()
+            if published != first["published"]:
+                tables = [t for (t,) in conn.execute(
+                    "select table_name from information_schema.columns"
+                    " where table_schema = 'marts' and column_name = 'season'").fetchall()]
+                first["seasons"] = {t: conn.execute(psycopg.sql.SQL("select min(season) from marts.{}")
+                                                    .format(psycopg.sql.Identifier(t))).fetchone()[0]
+                                    for t in tables}
+                first["published"] = published
+            return {t: s for t, s in first["seasons"].items() if s is not None}
+
+    return create_app(ask=ask, freshness=freshness, seasons=seasons, limiter=limiter,
                       trust_proxy=os.getenv("ASK_TRUST_PROXY") == "1")

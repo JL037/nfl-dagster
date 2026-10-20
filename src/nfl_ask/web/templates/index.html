@@ -17,8 +17,9 @@
       <p class="kicker">NFL · Answered from the data</p>
       <h1>Ask anything about the NFL.</h1>
       <p class="lede">Players, teams, games, contracts, betting lines: ask it the way you'd ask a
-        friend. Every answer is built from real game data and shows exactly how it was found. If we
-        don't have the data, we'll tell you instead of guessing.</p>
+        friend. Every answer is built from real game data{% if since %}, from the {{ since }} season to
+        today{% endif %}, and shows exactly how it was found. If we don't have the data, we'll tell
+        you instead of guessing.</p>
     </header>
 
     <form class="ask" method="post" action="/answer"
@@ -44,7 +45,7 @@
     <section id="answer" aria-live="polite"></section>
 
     <footer>
-      {% if as_of %}<p>Data as of {{ as_of | day }}. Refreshed Mondays, Tuesdays and Fridays.</p>{% endif %}
+      {% if as_of %}<p>{% if since %}Seasons {{ since }} to today. {% endif %}Data as of {{ as_of | day }}. Refreshed Mondays, Tuesdays and Fridays.</p>{% endif %}
       <p>Privacy: we don't keep your questions or anything about you. Questions are sent to
         Anthropic's Claude to be answered.</p>
       <p class="credits">Data: <a href="https://github.com/nflverse">nflverse</a> play-by-play,

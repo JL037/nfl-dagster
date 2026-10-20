@@ -45,8 +45,9 @@ def answered(text="Drake Maye was the best value QB in 2025.", queries=None, cha
                      explanation=explanation, chart=chart, results=[LEADERS] * len(queries))
 
 
-def client(ask=None):
-    app = create_app(ask=ask or FakeAsk(answered()), freshness=lambda: {"qb_contract_value": PUBLISHED})
+def client(ask=None, seasons=dict):
+    app = create_app(ask=ask or FakeAsk(answered()), freshness=lambda: {"qb_contract_value": PUBLISHED},
+                     seasons=seasons)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -266,3 +267,29 @@ def test_credits_follow_the_marts_actually_read():
     html = client(FakeAsk(epa_only)).post("/answer", data={"question": "q"}).text
     sources = html[html.index("Where this comes from"):]
     assert "nflverse play-by-play" in sources and "OverTheCap" not in sources
+
+
+# --- How far back the data goes -----------------------------------------------------------------
+
+SEASONS = {"team_season_epa": 1999, "game_results_vs_spread": 1999, "qb_contract_value": 2015}
+
+
+def test_the_page_says_how_far_back_the_data_goes():
+    page = " ".join(client(seasons=lambda: SEASONS).get("/").text.split())
+    assert "from the 1999 season to today" in page  # the intro
+    assert "Seasons 1999 to today." in page  # the footer
+
+
+def test_no_data_reply_gives_the_range_and_later_starts():
+    no_data = FakeAsk(AskResult(status="no_data", text=NO_DATA_MESSAGE))
+    html = " ".join(client(no_data, seasons=lambda: SEASONS).post("/answer", data={"question": "1985 Bears?"}).text.split())
+    assert "every season from 1999 to today" in html
+    assert "quarterback contracts and cap hits (since 2015)" in html  # starts later than the rest
+    assert "team offense and defense (since" not in html
+
+
+def test_the_page_still_works_when_the_seasons_lookup_fails():
+    def broken():
+        raise RuntimeError("database down")
+    page = client(seasons=broken).get("/").text
+    assert "Ask anything about the NFL." in page and "Seasons " not in page
