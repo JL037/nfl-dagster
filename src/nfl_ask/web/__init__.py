@@ -5,7 +5,8 @@ What it promises visitors, enforced here and pinned in tests/test_ask_web.py:
 - The question travels only in the request body (POST), never the URL, so it never reaches
   access logs; GET /answer is refused.
 - Nothing about the question is logged or stored, even when answering fails (only the error's
-  type is logged).
+  type is logged). The one exception is the visitor's choice: Share saves that one answer
+  behind a private link that expires after 24 hours (share.py).
 - Every answer shows the SQL behind it, its bound values, which marts it read and when they
   were published.
 - Nothing the model writes can run in the browser: templates autoescape everything.
@@ -19,7 +20,7 @@ import logging
 import os
 import random
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -36,6 +37,7 @@ from nfl_ask.agent import AskResult
 from nfl_ask.pricing import haiku_cost
 from nfl_ask.web.charts import render_chart
 from nfl_ask.web.limits import RateLimiter
+from nfl_ask.web.share import SHARE_HOURS, TOKEN, PostgresShares, Tickets
 from nfl_ask.web.present import (coverage, data_table, key_stats, mart_docs, mart_name, notes_for,
                                  sources_for, subject_rows)
 
@@ -118,6 +120,12 @@ def serving_url(env: str, environ: Mapping[str, str]) -> str:
     return environ.get(f"{name}_POOLED") or environ[name]
 
 
+def when(moment: datetime) -> str:
+    """Oct 20, 2026, 11:05 PM Pacific: for a link's expiry, where the hour matters."""
+    local = moment.astimezone(PACIFIC)
+    return f"{local:%b} {local.day}, {local.year}, {local.hour % 12 or 12}:{local:%M %p} Pacific"
+
+
 def day(moment: datetime) -> str:
     local = moment.astimezone(PACIFIC)
     return f"{local:%b} {local.day}, {local.year}"
@@ -130,8 +138,14 @@ def create_app(
     seasons: Callable[[], Mapping[str, int]] = dict,
     limiter: RateLimiter | None = None,
     trust_proxy: bool = False,
+    shares=None,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
+    """`shares`: where shared answers are kept (share.PostgresShares, or MemoryShares in tests).
+    None turns sharing off: no Share button, and /share and /r/ answer 404."""
     limiter = limiter or RateLimiter()
+    share_limiter = RateLimiter(per_minute=5, per_hour=20, per_day_total=1000)
+    tickets = Tickets()
 
     def visitor(request: Request) -> str:
         """Who's asking, for the rate limit only. X-Forwarded-For only behind a trusted proxy
@@ -146,6 +160,7 @@ def create_app(
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.filters["day"] = day
+    templates.env.filters["when"] = when
 
     def published() -> Mapping[str, datetime]:
         try:
@@ -210,8 +225,53 @@ def create_app(
                        result.status, len(result.queries), u.get("input_tokens", 0), u.get("output_tokens", 0),
                        u.get("cache_read_input_tokens", 0), u.get("cache_creation_input_tokens", 0), haiku_cost(u))
 
-        return fragment({"question": question, "result": result, "asked_on": day(datetime.now(PACIFIC)),
-                         **answer_view(result, published(), first_seasons())})
+        context = {"question": question, "result": result, "asked_on": day(datetime.now(PACIFIC)),
+                   **answer_view(result, published(), first_seasons())}
+        if shares is not None and result.status == "answered":
+            # The answer exactly as shown, signed, so Share can save it without the server
+            # keeping anything now (see share.py).
+            shown = templates.get_template("_answer.html").render({**context, "share": None})
+            context["share"] = dict(zip(("payload", "signature"), tickets.issue(shown)))
+        return fragment(context)
+
+    @app.post("/share", response_class=HTMLResponse)
+    def share(request: Request, payload: str = Form(""), signature: str = Form("")):
+        # Notices are 200s: the page swaps them in under the answer. An error status would make
+        # app.js replace the whole answer with a generic error (429 is the one it shows as is).
+        def reply(context, status=200):
+            response = templates.TemplateResponse(request, "_share.html", context, status_code=status)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+
+        if shares is None:
+            return reply({"notice": "Sharing is off."})
+        if not share_limiter.allow(visitor(request)).ok:
+            return reply({"notice": "That's a lot of links in a short time. Please try again later."}, status=429)
+        html = tickets.redeem(payload, signature)
+        if html is None:
+            # Tampered with, or issued before the server restarted.
+            return reply({"notice": "This answer can't be shared anymore. Ask it again to get a new link."})
+        try:
+            token, expires = shares.save(html, now())
+        except Exception as e:
+            log.warning("share failed: %s", type(e).__name__)
+            return reply({"notice": "Couldn't make a link just now. Please try again."})
+        usage_log.info("share created")  # never the token or the answer
+        return reply({"path": f"/r/{token}", "hours": SHARE_HOURS, "expires": expires})
+
+    @app.get("/r/{token}", response_class=HTMLResponse)
+    def shared(request: Request, token: str):
+        found = shares.load(token, now()) if shares is not None and TOKEN.match(token) else None
+        response = templates.TemplateResponse(
+            request, "shared.html",
+            {"answer": Markup(found[0]) if found else None,  # rendered and signed by this server
+             "expires": found[1] if found else None},
+            status_code=200 if found else 404)
+        # Private: not for search engines, and the link doesn't leak to sites it links to.
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     return app
 
@@ -272,4 +332,4 @@ def create_production_app() -> FastAPI:
             return {t: s for t, s in first["seasons"].items() if s is not None}
 
     return create_app(ask=ask, freshness=freshness, seasons=seasons, limiter=limiter,
-                      trust_proxy=os.getenv("ASK_TRUST_PROXY") == "1")
+                      trust_proxy=os.getenv("ASK_TRUST_PROXY") == "1", shares=PostgresShares(connect))

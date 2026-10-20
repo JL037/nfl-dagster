@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared answer · Ask the NFL</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preload" href="/static/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Show 429 (rate limited) messages; other 4xx/5xx are handled in app.js. -->
+  <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "429", "swap": true}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="has-answer">
+  <main>
+    <header class="masthead">
+      <p class="kicker">NFL · Answered from the data</p>
+      <h1><a href="/">Ask anything about the NFL.</a></h1>
+    </header>
+
+    {% if answer %}
+    <p class="shared-banner">A shared answer. This link expires on {{ expires | when }}.
+      <a href="/">Ask your own question</a></p>
+    <section id="answer">{{ answer }}</section>
+    {% else %}
+    <article class="result no_data">
+      <h2 class="headline">This link has expired or doesn't exist.</h2>
+      <p class="explanation">Shared answers are deleted after 24 hours. <a href="/">Ask the question again</a>
+        to see the latest answer.</p>
+    </article>
+    {% endif %}
+
+    {% include "_footer.html" %}
+  </main>
+</body>
+</html>

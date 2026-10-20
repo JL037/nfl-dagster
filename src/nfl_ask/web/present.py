@@ -108,7 +108,7 @@ MART_SOURCES = {
 # What each mart lets people ask about, for the "we don't have that" reply. A test keeps it
 # complete for every served mart, so the reply grows with the data.
 MART_COVERAGE = {
-    "qb_season_epa": "quarterback play (EPA and success rates)",
+    "qb_season_epa": "quarterback EPA and success rates",
     "qb_contract_value": "quarterback contracts and cap hits",
     "team_season_epa": "team offense and defense",
     "team_fourth_down": "fourth-down decisions",

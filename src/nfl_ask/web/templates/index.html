@@ -44,16 +44,7 @@
     </div>
     <section id="answer" aria-live="polite"></section>
 
-    <footer>
-      {% if as_of %}<p>{% if since %}Seasons {{ since }} to today. {% endif %}Data as of {{ as_of | day }}. Refreshed Mondays, Tuesdays and Fridays.</p>{% endif %}
-      <p>Privacy: we don't keep your questions or anything about you. Questions are sent to
-        Anthropic's Claude to be answered.</p>
-      <p class="credits">Data: <a href="https://github.com/nflverse">nflverse</a> play-by-play,
-        schedules, players and teams (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>),
-        with EPA from <a href="https://www.nflfastr.com">nflfastR</a>; contracts from
-        <a href="https://overthecap.com">OverTheCap</a> via nflverse. We aggregate and transform the
-        data; any mistakes are ours. Not affiliated with the NFL, nflverse or OverTheCap.</p>
-    </footer>
+    {% include "_footer.html" %}
   </main>
 </body>
 </html>

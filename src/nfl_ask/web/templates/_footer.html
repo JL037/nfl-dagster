@@ -1,0 +1,11 @@
+    <footer>
+      {% if as_of %}<p>{% if since %}Seasons {{ since }} to today. {% endif %}Data as of {{ as_of | day }}. Refreshed Mondays, Tuesdays and Fridays.</p>{% endif %}
+      <p>Privacy: we don't keep your questions or anything about you. Questions are sent to
+        Anthropic's Claude to be answered. If you click Share, that one answer (with its question)
+        is saved behind a private link and deleted after 24 hours.</p>
+      <p class="credits">Data: <a href="https://github.com/nflverse">nflverse</a> play-by-play,
+        schedules, players and teams (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>),
+        with EPA from <a href="https://www.nflfastr.com">nflfastR</a>; contracts from
+        <a href="https://overthecap.com">OverTheCap</a> via nflverse. We aggregate and transform the
+        data; any mistakes are ours. Not affiliated with the NFL, nflverse or OverTheCap.</p>
+    </footer>
