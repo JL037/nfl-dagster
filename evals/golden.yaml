@@ -240,3 +240,24 @@
   expect: answer
   truth: select player_name from player_season_efficiency where season = 2024 and role = 'rusher' and position = 'RB' order by yards desc limit 1
   checks: [{column: player_name, kind: full_name}]
+
+# Across eras (player_season_vs_league, player_careers): measured against each season's league.
+- id: era_best_rb_season_vs_league
+  question: Which running back had the best season relative to his league since 1999, by EPA per rush?
+  expect: answer
+  truth: select player_name from player_season_vs_league where role = 'rusher' and position = 'RB' and is_season_complete order by epa_per_play_over_league desc limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: era_emmitt_partial
+  question: How did Emmitt Smith's career compare to Nick Chubb's?
+  expect: answer
+  # Emmitt's 1990-1998 aren't in the data: the answer has to say only part of his career is covered.
+  contains_any: ["1999", "partial", "before", "only part", "not covered", "aren't", "isn't", "missing", "earlier"]
+
+- id: era_peterson_top5
+  question: How many times did Adrian Peterson finish in the top 5 in EPA per rush?
+  expect: answer
+  truth: select top_5_seasons from player_careers where role = 'rusher' and player_name = 'Adrian Peterson'
+  checks: [{column: top_5_seasons, kind: count}]
+
+- {id: era_1985_bears, question: "How good was the 1985 Bears defense?", expect: no_data}

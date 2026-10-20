@@ -20,6 +20,8 @@ SERVED_MARTS = {
     "team_player_leaders": "team_season_role_key",
     "team_rosters": "roster_key",
     "team_offensive_line": "team_season_key",
+    "player_season_vs_league": "player_season_role_key",
+    "player_careers": "player_role_key",
 }
 
 # When should the website's copy of a mart update? As soon as the mart does (eager), but not
