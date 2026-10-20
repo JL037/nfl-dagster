@@ -261,3 +261,23 @@
   checks: [{column: top_5_seasons, kind: count}]
 
 - {id: era_1985_bears, question: "How good was the 1985 Bears defense?", expect: no_data}
+
+# Box-score stats (player_season_stats, team_season_stats).
+- id: stats_watt_sacks_2021
+  question: How many sacks did T.J. Watt have in 2021?
+  expect: answer
+  truth: select sacks from player_season_stats where season = 2021 and season_type = 'REG' and player_name = 'T.J. Watt'
+  checks: [{column: sacks, kind: value, decimals: 1}]
+
+- id: stats_most_passing_yards_2013
+  question: Who threw for the most yards in the 2013 regular season?
+  expect: answer
+  truth: select player_name from player_season_stats where season = 2013 and season_type = 'REG' order by passing_yards desc nulls last limit 1
+  checks: [{column: player_name, kind: full_name}]
+
+- id: stats_team_most_turnovers_2010
+  question: Which team had the most turnovers in the 2010 regular season?
+  expect: answer
+  truth: select team, team_name from team_season_stats where season = 2010 and season_type = 'REG' order by turnovers desc limit 1
+  checks: [{column: team, kind: team}]
+

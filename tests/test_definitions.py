@@ -12,7 +12,8 @@ from nfl_dagster.assets.serving import SERVED_MARTS, SERVING_AUTOMATION_CONDITIO
 from nfl_dagster.definitions import contracts_schedule, current_season_schedule, defs
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
-RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players", "raw_rosters"}
+RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players", "raw_rosters",
+              "raw_player_stats", "raw_team_stats"}
 DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
@@ -34,6 +35,10 @@ DBT_ASSETS = {
     "marts/team_offensive_line",
     "marts/player_season_vs_league",
     "marts/player_careers",
+    "staging/stg_player_stats",
+    "staging/stg_team_stats",
+    "marts/player_season_stats",
+    "marts/team_season_stats",
 }
 
 # One serving asset per published mart: the copy the website reads.
@@ -84,7 +89,8 @@ def test_checks(asset_graph):
     # +15 for rosters, player games, player efficiency, leaders and offensive line: unique and
     # not_null on each key (12), accepted_values on role (2), not_null player_name (1).
     # +4 for the cross-era marts: unique and not_null on each key.
-    assert len(checks) == 67
+    # +8 for box-score stats: unique and not_null on the keys of 2 staging models and 2 marts.
+    assert len(checks) == 75
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -116,6 +122,10 @@ def test_checks(asset_graph):
         ),
         ("marts/team_player_leaders", {"marts/player_season_efficiency"}),
         ("marts/team_rosters", {"staging/stg_rosters"}),
+        ("staging/stg_player_stats", {"raw_player_stats"}),
+        ("staging/stg_team_stats", {"raw_team_stats"}),
+        ("marts/player_season_stats", {"staging/stg_player_stats"}),
+        ("marts/team_season_stats", {"staging/stg_team_stats", "staging/stg_teams"}),
         # Across eras: each season against its own league average, and careers built from them.
         ("marts/player_season_vs_league", {"marts/player_season_efficiency", "intermediate/int_player_games"}),
         (
@@ -148,7 +158,7 @@ def test_lineage(asset_graph, asset, upstream):
 
 
 def test_raw_assets_are_partitioned_by_season(asset_graph):
-    for asset in ("raw_pbp", "raw_schedules"):
+    for asset in ("raw_pbp", "raw_schedules", "raw_player_stats", "raw_team_stats"):
         assert asset_graph.get(dg.AssetKey(asset)).partitions_def == season_partitions
     for asset in ("raw_teams", "raw_contracts"):
         assert asset_graph.get(dg.AssetKey(asset)).partitions_def is None
@@ -175,7 +185,8 @@ def test_automation_on_dbt_models_and_serving(asset_graph):
 
 def test_current_season_refresh_job():
     job = defs.resolve_job_def("current_season_refresh")
-    assert keys(job.asset_layer.selected_asset_keys) == {"raw_pbp", "raw_schedules"}
+    # Box-score stats refresh with the games they come from.
+    assert keys(job.asset_layer.selected_asset_keys) == {"raw_pbp", "raw_schedules", "raw_player_stats", "raw_team_stats"}
     assert job.partitions_def == season_partitions
 
 

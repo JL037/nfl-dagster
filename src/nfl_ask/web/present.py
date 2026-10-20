@@ -55,6 +55,17 @@ LABELS = {
     "first_season": "First season", "last_season": "Last season", "is_partial_career": "Career before 1999",
     "seasons": "Seasons", "qualifying_seasons": "Qualifying seasons", "top_5_seasons": "Top-5 seasons",
     "best_season": "Best season", "best_season_epa_per_play_over_league": "Best season vs league",
+    # Box-score stats
+    "season_type": "Season type", "pass_attempts": "Pass attempts", "passing_yards": "Passing yards",
+    "passing_tds": "Passing TDs", "interceptions_thrown": "INTs thrown", "sacks_taken": "Sacked",
+    "carries": "Carries", "rushing_yards": "Rushing yards", "rushing_tds": "Rushing TDs",
+    "yards_per_carry": "Yards per carry", "targets": "Targets", "receiving_yards": "Receiving yards",
+    "receiving_tds": "Receiving TDs", "yards_per_reception": "Yards per catch", "fumbles_lost": "Fumbles lost",
+    "tackles": "Tackles", "tackles_for_loss": "Tackles for loss", "interceptions": "INTs",
+    "passes_defended": "Passes defended", "forced_fumbles": "Forced fumbles", "defensive_tds": "Defensive TDs",
+    "fg_made": "FG made", "fg_attempts": "FG attempts", "fg_long": "Long FG", "pat_made": "PAT made",
+    "pat_attempts": "PAT attempts", "special_teams_tds": "Special teams TDs", "turnovers": "Turnovers",
+    "penalties": "Penalties", "penalty_yards": "Penalty yards",
 }
 WORDS = {"epa": "EPA", "qb": "QB", "qbs": "QBs", "ats": "ATS", "id": "ID", "pct": "%", "avg": "Avg"}
 YEARLIKE = {"season", "week", "year"}
@@ -71,6 +82,7 @@ MART_NAMES = {
     "team_rosters": "Team rosters", "team_offensive_line": "Offensive lines",
     "player_season_vs_league": "Player seasons against their league",
     "player_careers": "Player careers",
+    "player_season_stats": "Player season stats", "team_season_stats": "Team season stats",
 }
 
 
@@ -82,6 +94,7 @@ SOURCES = {
     "pbp": {"name": "nflverse play-by-play", "url": NFLVERSE, "license": CC_BY,
             "note": "EPA from the nflfastR model"},
     "schedules": {"name": "nflverse schedules and betting lines", "url": NFLVERSE, "license": CC_BY},
+    "stats": {"name": "nflverse player and team stats", "url": NFLVERSE, "license": CC_BY},
     "players": {"name": "nflverse players", "url": NFLVERSE, "license": CC_BY},
     "teams": {"name": "nflverse teams", "url": NFLVERSE, "license": CC_BY},
     "rosters": {"name": "nflverse rosters", "url": NFLVERSE, "license": CC_BY},
@@ -102,6 +115,8 @@ MART_SOURCES = {
     "team_offensive_line": ["pbp", "rosters", "teams"],
     "player_season_vs_league": ["pbp", "schedules", "players"],
     "player_careers": ["pbp", "players", "rosters"],
+    "player_season_stats": ["stats"],
+    "team_season_stats": ["stats", "teams"],
 }
 
 
@@ -119,6 +134,8 @@ MART_COVERAGE = {
     "team_offensive_line": "offensive line play",
     "player_season_vs_league": "player seasons against their league",
     "player_careers": "player careers compared across eras",
+    "player_season_stats": "player stats (yards, touchdowns, tackles, sacks, field goals)",
+    "team_season_stats": "team stats (yards, turnovers, sacks, penalties)",
 }
 
 
