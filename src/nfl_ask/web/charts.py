@@ -5,15 +5,17 @@ Drawn on the server: no chart library, no CDN, and vector output that prints sha
 The marks follow the dataviz rules: one hue for a single series, blue/red only for values above
 and below zero, at most three series (each in a fixed categorical slot), thin marks with 4px
 rounded data-ends, hairline grids, one axis, sparing labels, a legend only for two or more
-series, and a <title> tooltip on every mark. Colors are CSS variables (style.css), so the
+series, and a <title> tooltip on every mark. The rows the answer is about stay at full strength
+and the rest recede (style.css), so the answer's subject is the first thing the eye lands on. Colors are CSS variables (style.css), so the
 same SVG follows light and dark mode and prints in light.
 """
 
 import math
+from collections.abc import Collection
 from html import escape
 
 from nfl_ask.query import QueryResult
-from nfl_ask.web.present import column_label, format_value
+from nfl_ask.web.present import column_label, format_value, fuller, row_name
 
 WIDTH = 680
 MAX_SERIES = 3  # the categorical slots that stay distinguishable for everyone, in every form
@@ -26,11 +28,9 @@ def nice_ticks(lo: float, hi: float, count: int = 4) -> list[float]:
     raw = (hi - lo) / count
     magnitude = 10 ** math.floor(math.log10(raw))
     step = next(m * magnitude for m in (1, 2, 2.5, 5, 10) if m * magnitude >= raw)
-    start = math.floor(lo / step) * step
-    ticks, t = [], start
-    while t <= hi + step * 0.5:
-        ticks.append(round(t, 10))
-        t += step
+    ticks = [round(math.floor(lo / step) * step, 10)]
+    while ticks[-1] < hi - step * 1e-9:  # the last tick at or past the top value, so no mark overruns the axis
+        ticks.append(round(ticks[-1] + step, 10))
     return ticks
 
 
@@ -61,19 +61,21 @@ def rounded_bar(x0, x1, y, h, r=4.0):
             f"V{y + h - r:.1f} Q{x1:.1f},{y + h:.1f} {x1 + r:.1f},{y + h:.1f} H{x0:.1f} Z")
 
 
-def frame(title: str, height: float, body: list[str]) -> str:
-    return (f'<svg class="chart" viewBox="0 0 {WIDTH} {height:.0f}" role="img" aria-label="{escape(title)}" '
+def frame(title: str, height: float, body: list[str], subject: bool = False) -> str:
+    cls = "chart has-subject" if subject else "chart"
+    return (f'<svg class="{cls}" viewBox="0 0 {WIDTH} {height:.0f}" role="img" aria-label="{escape(title)}" '
             f'xmlns="http://www.w3.org/2000/svg"><title>{escape(title)}</title>{"".join(body)}</svg>')
 
 
-def bar_chart(chart, result: QueryResult) -> str | None:
-    xi, yi = result.columns.index(chart["x"]), result.columns.index(chart["y"])
-    rows = [(str(row[xi]), row[yi]) for row in result.rows if row[yi] is not None]
+def bar_chart(chart, result: QueryResult, subject: Collection[int] = ()) -> str | None:
+    # The category by its fuller name when the result has one (Jordan Love, not J.Love).
+    xi, yi = result.columns.index(fuller(chart["x"], result.columns)), result.columns.index(chart["y"])
+    rows = [(str(row[xi]), row[yi], i in subject) for i, row in enumerate(result.rows) if row[yi] is not None]
     if not rows:
         return None
-    values = [v for _, v in rows]
+    values = [v for _, v, _ in rows]
     ticks = nice_ticks(min(0, min(values)), max(0, max(values)))
-    left = min(220, 12 + CHAR * max(len(name) for name, _ in rows))
+    left = min(220, 12 + CHAR * max(len(name) for name, _, _ in rows))
     right, row_h, bar_h, top = 64, 28, 16, 8
     height = top + row_h * len(rows) + 30
     x = scale(ticks[0], ticks[-1], left, WIDTH - right)
@@ -83,16 +85,16 @@ def bar_chart(chart, result: QueryResult) -> str | None:
         body.append(f'<line class="grid" x1="{x(t):.1f}" x2="{x(t):.1f}" y1="{top}" y2="{height - 26}"/>')
         body.append(text(x(t), height - 12, tick_label(chart["y"], t, ticks), anchor="middle"))
     body.append(f'<line class="axis" x1="{zero:.1f}" x2="{zero:.1f}" y1="{top}" y2="{height - 26}"/>')
-    for i, (name, value) in enumerate(rows):
+    for i, (name, value, picked) in enumerate(rows):
         y = top + i * row_h + (row_h - bar_h) / 2
         sign = "neg" if value < 0 else "pos"
         shown = format_value(chart["y"], value)
-        body.append(f'<path class="bar {sign}" d="{rounded_bar(zero, x(value), y, bar_h)}">'
+        body.append(f'<path class="bar {sign}{" subject" if picked else ""}" d="{rounded_bar(zero, x(value), y, bar_h)}">'
                     f"<title>{escape(name)}: {escape(shown)}</title></path>")
-        body.append(text(left - 8, y + bar_h / 2, name, cls="label", anchor="end"))
+        body.append(text(left - 8, y + bar_h / 2, name, cls="label subject" if picked else "label", anchor="end"))
         tip = x(value) + (6 if value >= 0 else -6)
         body.append(text(tip, y + bar_h / 2, shown, cls="value", anchor="start" if value >= 0 else "end"))
-    return frame(chart["title"], height, body)
+    return frame(chart["title"], height, body, subject=any(picked for _, _, picked in rows))
 
 
 def series_of(chart, result: QueryResult) -> dict[str, list[tuple]] | None:
@@ -139,13 +141,13 @@ def xy_axes(chart, xs, ys, top, height, right, x_ticks=None):
 
 
 def point_name(result: QueryResult, row) -> str:
-    """What a point is, for its tooltip: the row's first text column (a player or team), plus season."""
-    name = next((v for c, v in zip(result.columns, row) if isinstance(v, str) and not c.endswith(("_key", "_id"))), "")
+    """What a point is, for its tooltip: the row's name (a player or team), plus season."""
+    name = row_name(result.columns, row)
     season = dict(zip(result.columns, row)).get("season")
     return f"{name} {season}".strip() if season is not None and name else str(name or season or "")
 
 
-def line_chart(chart, result: QueryResult) -> str | None:
+def line_chart(chart, result: QueryResult, subject: Collection[int] = ()) -> str | None:
     groups = series_of(chart, result)
     if not groups:
         return None
@@ -166,7 +168,7 @@ def line_chart(chart, result: QueryResult) -> str | None:
     return frame(chart["title"], height, legend(names, "line") + body)
 
 
-def scatter_chart(chart, result: QueryResult) -> str | None:
+def scatter_chart(chart, result: QueryResult, subject: Collection[int] = ()) -> str | None:
     groups = series_of(chart, result)
     if not groups:
         return None
@@ -174,21 +176,24 @@ def scatter_chart(chart, result: QueryResult) -> str | None:
     top, height = 60, 356
     x, y, body = xy_axes(chart, [p[0] for p in points], [p[1] for p in points], top, height, right=24)
     names = list(groups)
+    picked = [p for p in points if any(p[2] is result.rows[i] for i in subject)]
     for i, name in enumerate(names):
         for px, py, row in groups[name]:
             label = f"{point_name(result, row)}: {column_label(chart['x'])} {format_value(chart['x'], px)}, {column_label(chart['y'])} {format_value(chart['y'], py)}"
-            body.append(f'<circle class="dot s{i + 1}" cx="{x(px):.1f}" cy="{y(py):.1f}" r="4.5"><title>{escape(label)}</title></circle>')
-    # Label sparingly: just the highest and lowest points.
+            cls = f"dot s{i + 1}" + (" subject" if any(row is p[2] for p in picked) else "")
+            body.append(f'<circle class="{cls}" cx="{x(px):.1f}" cy="{y(py):.1f}" r="4.5"><title>{escape(label)}</title></circle>')
+    # Label sparingly: the answer's subject, else just the highest and lowest points.
     best, worst = max(points, key=lambda p: p[1]), min(points, key=lambda p: p[1])
-    for px, py, row in {id(best): best, id(worst): worst}.values():
-        body.append(text(x(px) + 8, y(py), point_name(result, row), cls="label"))
-    return frame(chart["title"], height, legend(names, "dot") + body)
+    for px, py, row in ({id(p): p for p in picked} or {id(best): best, id(worst): worst}).values():
+        body.append(text(x(px) + 8, y(py), point_name(result, row), cls="label subject" if picked else "label"))
+    return frame(chart["title"], height, legend(names, "dot") + body, subject=bool(picked))
 
 
 DRAW = {"bar": bar_chart, "line": line_chart, "scatter": scatter_chart}
 
 
-def render_chart(chart: dict | None, result: QueryResult | None) -> str | None:
+def render_chart(chart: dict | None, result: QueryResult | None, subject: Collection[int] = ()) -> str | None:
+    """`subject`: the rows the answer is about (present.subject_rows), drawn at full strength."""
     if not chart or result is None or chart.get("kind") not in DRAW:
         return None
-    return DRAW[chart["kind"]](chart, result)
+    return DRAW[chart["kind"]](chart, result, subject)

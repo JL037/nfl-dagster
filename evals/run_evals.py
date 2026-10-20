@@ -6,6 +6,7 @@ fixed test questions, not visitors'.
 
     python evals/run_evals.py                  # Claude Haiku 5.5 and GLM-5.3 Flash
     python evals/run_evals.py --models haiku
+    python evals/run_evals.py --models haiku --ids example_prescott,broad_best_qb   # just these
 """
 
 import argparse
@@ -53,9 +54,14 @@ def score(item: dict, status: str, answer: str, row: dict | None) -> list[str]:
     return failures
 
 
-def main(model_names: list[str]) -> None:
+def main(model_names: list[str], ids: list[str] | None = None) -> None:
     load_dotenv()
     golden = yaml.safe_load((HERE / "golden.yaml").read_text())
+    if ids:
+        unknown = set(ids) - {item["id"] for item in golden}
+        if unknown:
+            raise SystemExit(f"no such question ids: {', '.join(sorted(unknown))}")
+        golden = [item for item in golden if item["id"] in ids]
     env = os.getenv("NFL_ENV", "dev")
     runs = {}
     with psycopg.connect(os.environ[f"SERVING_DB_URL_{env.upper()}"], autocommit=True) as conn:
@@ -105,4 +111,6 @@ def main(model_names: list[str]) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="haiku,glm")
-    main(parser.parse_args().models.split(","))
+    parser.add_argument("--ids", help="comma-separated question ids to run (default: all)")
+    args = parser.parse_args()
+    main(args.models.split(","), args.ids.split(",") if args.ids else None)
