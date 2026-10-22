@@ -281,3 +281,15 @@
   truth: select team, team_name from team_season_stats where season = 2010 and season_type = 'REG' order by turnovers desc limit 1
   checks: [{column: team, kind: team}]
 
+# Injury reports (2009 on). Players on injured reserve aren't listed: answers about missed games say so.
+- id: injuries_most_out_team_2024
+  question: Which team listed the most players as Out on injury reports in the 2024 regular season?
+  expect: answer
+  truth: >
+    select team, max(team_name) as team_name from injury_reports
+    where season = 2024 and season_type = 'REG' and game_status = 'Out'
+    group by team order by count(*) desc limit 1
+  checks: [{column: team, kind: team}]
+
+- {id: injuries_before_2009, question: "Which players were on the injury report in week 1 of 2005?", expect: no_data}
+

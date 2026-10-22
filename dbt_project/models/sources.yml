@@ -44,6 +44,15 @@ sources:
             dagster:
               asset_key: ["raw_team_stats"]
 
+      - name: injuries
+        description: >
+          Weekly injury reports, one row per player, team and week (nflreadpy.load_injuries), 2009 on,
+          normalized to one format and keeping only the latest report per player and week.
+        config:
+          meta:
+            dagster:
+              asset_key: ["raw_injuries"]
+
       - name: schedules
         description: Schedule and results, one row per game (nflreadpy.load_schedules), all seasons.
         config:

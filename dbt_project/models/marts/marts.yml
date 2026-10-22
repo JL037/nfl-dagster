@@ -319,6 +319,40 @@ models:
       - name: sacks
         description: Sacks made by the defense. sacks_taken is the offense being sacked.
 
+  - name: injury_reports
+    description: >
+      Every weekly injury report, 2009 on: one row per player, team and week, with the game
+      status the team listed (Out, Doubtful, Questionable; Probable until 2015; Note) and the
+      practice status. Players on injured reserve aren't on these reports, so they undercount
+      games missed: say so when answering about missed games.
+    columns:
+      - name: injury_report_key
+        description: player_id, team, season, week and game type joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: game_status
+        description: The status for the coming game (Out, Doubtful, Questionable, Probable, Note).
+      - name: injury
+        description: The listed injury (e.g. Hamstring, Knee, Illness).
+      - name: team_name
+        description: Full team name. Use it when writing about a team.
+
+  - name: player_season_injuries
+    description: >
+      Per player, team and regular season, 2009 on: weekly injury reports listing him (weeks_listed)
+      and by game status (weeks_out, weeks_doubtful, weeks_questionable), and the injury listed
+      most often. Players on injured reserve aren't on the reports, so weeks_out undercounts
+      games missed: say so when answering about missed games.
+    columns:
+      - name: player_team_season_key
+        description: player_id, team and season joined.
+        data_tests:
+          - unique
+          - not_null
+      - name: weeks_out
+        description: Regular-season weeks his team listed him Out (not counting weeks on injured reserve).
+
 unit_tests:
   - name: ats_result_covers_pushes_and_missing_spreads
     description: >
@@ -529,3 +563,20 @@ unit_tests:
     expect:
       rows:
         - {team_season_type_key: NYG-2010-REG, team_name: New York Giants, games: 2, interceptions_thrown: 3, fumbles_lost: 1, turnovers: 4, passing_yards: 550}
+
+  - name: injury_seasons_count_statuses_and_the_main_injury
+    description: >
+      Regular-season reports only: 3 weeks (Out, Out, Questionable) with Knee twice and Ankle
+      once give weeks_out 2, weeks_questionable 1, most_listed_injury Knee. The playoff week
+      isn't counted.
+    model: player_season_injuries
+    given:
+      - input: ref('stg_injuries')
+        rows:
+          - {season: 2023, season_type: REG, week: 3, team: DAL, player_id: P, player_name: Pat, position: WR, game_status: Out, injury: Knee}
+          - {season: 2023, season_type: REG, week: 4, team: DAL, player_id: P, player_name: Pat, position: WR, game_status: Out, injury: Knee}
+          - {season: 2023, season_type: REG, week: 9, team: DAL, player_id: P, player_name: Pat, position: WR, game_status: Questionable, injury: Ankle}
+          - {season: 2023, season_type: POST, week: 19, team: DAL, player_id: P, player_name: Pat, position: WR, game_status: Out, injury: Ankle}
+    expect:
+      rows:
+        - {player_team_season_key: P-DAL-2023, weeks_listed: 3, weeks_out: 2, weeks_doubtful: 0, weeks_questionable: 1, most_listed_injury: Knee}

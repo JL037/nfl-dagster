@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_injuries
+    description: Weekly injury reports, one row per player, team and week (2009 on).
+    columns:
+      - name: injury_report_key
+        description: player_id, team, season, week and game type joined.
+        data_tests:
+          - unique
+          - not_null
+
+unit_tests:
+  - name: old_team_codes_and_blank_statuses_are_normalized
+    description: >
+      2009-2016 reports use OAK, SD and STL; they become play-by-play's codes. A practice status
+      that is only whitespace (nflverse has some) becomes null.
+    model: stg_injuries
+    given:
+      - input: source('raw', 'injuries')
+        rows:
+          - {season: 2012, season_type: REG, game_type: REG, week: 1, team: OAK, gsis_id: A, full_name: A, position: RB, report_status: Out, report_primary_injury: Knee, practice_status: "\n    "}
+          - {season: 2016, season_type: REG, game_type: REG, week: 2, team: SD, gsis_id: B, full_name: B, position: WR, report_status: Questionable, report_primary_injury: Ankle, practice_status: Limited Participation in Practice}
+    expect:
+      rows:
+        - {injury_report_key: A-LV-2012-1-REG, team: LV, game_status: Out, practice_status: null}
+        - {injury_report_key: B-LAC-2016-2-REG, team: LAC, game_status: Questionable, practice_status: Limited Participation in Practice}

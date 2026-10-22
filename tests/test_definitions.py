@@ -13,7 +13,7 @@ from nfl_dagster.definitions import contracts_schedule, current_season_schedule,
 from nfl_dagster.partitions import CURRENT_SEASON, FIRST_SEASON, season_partitions
 
 RAW_ASSETS = {"raw_pbp", "raw_schedules", "raw_teams", "raw_contracts", "raw_players", "raw_rosters",
-              "raw_player_stats", "raw_team_stats"}
+              "raw_player_stats", "raw_team_stats", "raw_injuries"}
 DBT_ASSETS = {
     "staging/stg_pbp",
     "staging/stg_schedules",
@@ -39,6 +39,9 @@ DBT_ASSETS = {
     "staging/stg_team_stats",
     "marts/player_season_stats",
     "marts/team_season_stats",
+    "staging/stg_injuries",
+    "marts/injury_reports",
+    "marts/player_season_injuries",
 }
 
 # One serving asset per published mart: the copy the website reads.
@@ -90,7 +93,8 @@ def test_checks(asset_graph):
     # not_null on each key (12), accepted_values on role (2), not_null player_name (1).
     # +4 for the cross-era marts: unique and not_null on each key.
     # +8 for box-score stats: unique and not_null on the keys of 2 staging models and 2 marts.
-    assert len(checks) == 75
+    # +6 for injuries: unique and not_null on the keys of stg_injuries and 2 marts.
+    assert len(checks) == 81
     names = {c.name for c in checks}
     assert "assert_team_fourth_down_counts_consistent" in names
     # A missing spread would otherwise go unnoticed (see game_results_vs_spread.sql).
@@ -123,6 +127,9 @@ def test_checks(asset_graph):
         ("marts/team_player_leaders", {"marts/player_season_efficiency"}),
         ("marts/team_rosters", {"staging/stg_rosters"}),
         ("staging/stg_player_stats", {"raw_player_stats"}),
+        ("staging/stg_injuries", {"raw_injuries"}),
+        ("marts/injury_reports", {"staging/stg_injuries", "staging/stg_teams"}),
+        ("marts/player_season_injuries", {"staging/stg_injuries"}),
         ("staging/stg_team_stats", {"raw_team_stats"}),
         ("marts/player_season_stats", {"staging/stg_player_stats"}),
         ("marts/team_season_stats", {"staging/stg_team_stats", "staging/stg_teams"}),
@@ -160,7 +167,7 @@ def test_lineage(asset_graph, asset, upstream):
 def test_raw_assets_are_partitioned_by_season(asset_graph):
     for asset in ("raw_pbp", "raw_schedules", "raw_player_stats", "raw_team_stats"):
         assert asset_graph.get(dg.AssetKey(asset)).partitions_def == season_partitions
-    for asset in ("raw_teams", "raw_contracts"):
+    for asset in ("raw_teams", "raw_contracts", "raw_injuries"):  # injuries start in 2009
         assert asset_graph.get(dg.AssetKey(asset)).partitions_def is None
     expected = [str(s) for s in range(FIRST_SEASON, CURRENT_SEASON + 1)]
     assert season_partitions.get_partition_keys() == expected
@@ -209,7 +216,7 @@ def test_contracts_refresh_job_and_schedule():
     """Contracts and players aren't partitioned, so they can't share current_season_refresh; they
     get their own job on the same Monday/Tuesday/Friday schedule, so all raw data refreshes together."""
     job = defs.resolve_job_def("contracts_refresh")
-    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players", "raw_rosters"}
+    assert keys(job.asset_layer.selected_asset_keys) == {"raw_contracts", "raw_players", "raw_rosters", "raw_injuries"}
     assert job.partitions_def is None
     assert contracts_schedule.cron_schedule == current_season_schedule.cron_schedule
     assert contracts_schedule.execution_timezone == "America/Los_Angeles"
