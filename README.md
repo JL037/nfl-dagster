@@ -435,6 +435,7 @@ The same check runs in [`.github/workflows/taskless.yml`](.github/workflows/task
 | `raw_player_stats` | `RAW.PLAYER_STATS` | By season | `nflreadpy.load_player_stats` | One row per player and week: passing, rushing, receiving, defense, kicking (about 17k rows and 150 columns per season) |
 | `raw_team_stats` | `RAW.TEAM_STATS` | By season | `nflreadpy.load_team_stats` | One row per team and week (about 550 rows per season) |
 | `raw_teams` | `RAW.TEAMS` | No | `nflreadpy.load_teams` | Team names, conferences, divisions, colors |
+| `raw_injuries` | `RAW.INJURIES` | No (2009 on, loaded whole) | `nflreadpy.load_injuries` | Weekly injury reports, one row per player, team and week; every season normalized to one format, superseded reports dropped (about 6k rows a season) |
 | `raw_contracts` | `RAW.CONTRACTS` | No | `nflreadpy.load_contracts` (OverTheCap) | One row per contract. Each player's season-by-season cap history is kept as nested `VARIANT` lists, flattened in staging |
 
 Each asset also writes its Parquet file under `data/raw/` and keeps a copy in the stage `RAW.RAW_STAGE`.

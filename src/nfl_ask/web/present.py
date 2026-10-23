@@ -66,6 +66,11 @@ LABELS = {
     "fg_made": "FG made", "fg_attempts": "FG attempts", "fg_long": "Long FG", "pat_made": "PAT made",
     "pat_attempts": "PAT attempts", "special_teams_tds": "Special teams TDs", "turnovers": "Turnovers",
     "penalties": "Penalties", "penalty_yards": "Penalty yards",
+    # Injuries
+    "game_status": "Game status", "injury": "Injury", "secondary_injury": "Other injury",
+    "practice_status": "Practice", "game_type": "Game type", "weeks_listed": "Weeks listed",
+    "weeks_out": "Weeks out", "weeks_doubtful": "Weeks doubtful", "weeks_questionable": "Weeks questionable",
+    "most_listed_injury": "Most listed injury",
 }
 WORDS = {"epa": "EPA", "qb": "QB", "qbs": "QBs", "ats": "ATS", "id": "ID", "pct": "%", "avg": "Avg"}
 YEARLIKE = {"season", "week", "year"}
@@ -83,6 +88,7 @@ MART_NAMES = {
     "player_season_vs_league": "Player seasons against their league",
     "player_careers": "Player careers",
     "player_season_stats": "Player season stats", "team_season_stats": "Team season stats",
+    "injury_reports": "Injury reports", "player_season_injuries": "Player injury seasons",
 }
 
 
@@ -95,6 +101,8 @@ SOURCES = {
             "note": "EPA from the nflfastR model"},
     "schedules": {"name": "nflverse schedules and betting lines", "url": NFLVERSE, "license": CC_BY},
     "stats": {"name": "nflverse player and team stats", "url": NFLVERSE, "license": CC_BY},
+    "injuries": {"name": "nflverse injury reports", "url": NFLVERSE, "license": CC_BY,
+                 "note": "the NFL's weekly reports"},
     "players": {"name": "nflverse players", "url": NFLVERSE, "license": CC_BY},
     "teams": {"name": "nflverse teams", "url": NFLVERSE, "license": CC_BY},
     "rosters": {"name": "nflverse rosters", "url": NFLVERSE, "license": CC_BY},
@@ -117,6 +125,8 @@ MART_SOURCES = {
     "player_careers": ["pbp", "players", "rosters"],
     "player_season_stats": ["stats"],
     "team_season_stats": ["stats", "teams"],
+    "injury_reports": ["injuries", "teams"],
+    "player_season_injuries": ["injuries"],
 }
 
 
@@ -136,6 +146,8 @@ MART_COVERAGE = {
     "player_careers": "player careers compared across eras",
     "player_season_stats": "player stats (yards, touchdowns, tackles, sacks, field goals)",
     "team_season_stats": "team stats (yards, turnovers, sacks, penalties)",
+    "injury_reports": "weekly injury reports",
+    "player_season_injuries": "injury histories by season",
 }
 
 

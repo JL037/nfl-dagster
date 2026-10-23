@@ -1,8 +1,8 @@
 import dagster as dg
 
 from nfl_dagster.assets.dbt import nfl_dbt_models
-from nfl_dagster.assets.raw import (raw_contracts, raw_pbp, raw_player_stats, raw_players, raw_rosters,
-                                    raw_schedules, raw_team_stats, raw_teams)
+from nfl_dagster.assets.raw import (raw_contracts, raw_injuries, raw_pbp, raw_player_stats, raw_players,
+                                    raw_rosters, raw_schedules, raw_team_stats, raw_teams)
 from nfl_dagster.assets.serving import publish_marts
 from nfl_dagster.checks import raw_pbp_unique_plays, raw_schedules_scores_present
 from nfl_dagster.partitions import CURRENT_SEASON
@@ -49,7 +49,7 @@ def current_season_schedule():
 # its name so its Dagster+ schedule history carries on.
 # raw_rosters (season rosters, all seasons in one table) is unpartitioned too.
 contracts_refresh = dg.define_asset_job(
-    "contracts_refresh", selection=[raw_contracts, raw_players, raw_rosters]
+    "contracts_refresh", selection=[raw_contracts, raw_players, raw_rosters, raw_injuries]
 )
 
 contracts_schedule = dg.ScheduleDefinition(
@@ -61,7 +61,7 @@ contracts_schedule = dg.ScheduleDefinition(
 
 defs = dg.Definitions(
     assets=[raw_teams, raw_contracts, raw_players, raw_rosters, raw_pbp, raw_schedules, raw_player_stats,
-            raw_team_stats, nfl_dbt_models,
+            raw_team_stats, raw_injuries, nfl_dbt_models,
             publish_marts],
     asset_checks=[raw_pbp_unique_plays, raw_schedules_scores_present],
     jobs=[raw_data_checks, current_season_refresh, contracts_refresh],

@@ -66,6 +66,13 @@ AUDITS = {
             " from RAW.TEAM_STATS where season = %s and team is not null"
         ),
     },
+    # One report per player, team and week (keep_latest_reports drops superseded ones first).
+    "INJURIES": {
+        "duplicate_reports": (
+            "select count(*) - count(distinct season, week, game_type, team, gsis_id) from RAW.INJURIES"
+        ),
+        "missing_gsis_id": "select count_if(gsis_id is null) from RAW.INJURIES",
+    },
     "SCHEDULES": {
         "mismatched_scores": (
             "select count_if((home_score is null) <> (away_score is null))"
@@ -194,6 +201,62 @@ def drop_id_only_duplicates(df: pl.DataFrame) -> tuple[pl.DataFrame, int]:
     rest = [c for c in df.columns if c not in OTHER_SITE_IDS]
     kept = df.sort(OTHER_SITE_IDS, nulls_last=True).unique(subset=rest, keep="first", maintain_order=True)
     return kept, df.height - kept.height
+
+
+# nflverse's injury reports start in 2009, ten seasons after the season partitions do (1999),
+# and a load of 0 rows fails on purpose, so injuries load as one table, like rosters.
+FIRST_INJURY_SEASON = 2009
+INJURY_KEY = ["season", "week", "game_type", "team", "gsis_id"]
+
+
+def normalize_injuries(df: pl.DataFrame) -> pl.DataFrame:
+    """One season of injury reports in the columns and types every season shares.
+
+    nflverse's format drifts: season and week are Float64 in 2009-2020 (always whole numbers)
+    and Int32 since; 2025 drops date_modified and adds season_type. So: whole-number season
+    and week, date_modified kept (null from 2025), and season_type everywhere (REG, or POST
+    for playoff game types), in one column order.
+    """
+    if "date_modified" not in df.columns:
+        df = df.with_columns(pl.lit(None, dtype=pl.Datetime("us", "UTC")).alias("date_modified"))
+    if "season_type" not in df.columns:
+        df = df.with_columns(pl.when(pl.col("game_type") == "REG").then(pl.lit("REG")).otherwise(pl.lit("POST"))
+                             .alias("season_type"))
+    df = df.with_columns(pl.col("season").cast(pl.Int32), pl.col("week").cast(pl.Int32))
+    return df.select(INJURY_COLUMNS)
+
+
+INJURY_COLUMNS = ["season", "season_type", "game_type", "team", "week", "gsis_id", "position", "full_name",
+                  "first_name", "last_name", "report_primary_injury", "report_secondary_injury", "report_status",
+                  "practice_primary_injury", "practice_secondary_injury", "practice_status", "date_modified"]
+
+
+def keep_latest_reports(df: pl.DataFrame) -> tuple[pl.DataFrame, int]:
+    """One report per player, team and week: the latest. A status can be updated before the game
+    (2024 week 15: Cade Stover filed Questionable, then Out on game day), and nflverse keeps
+    both rows. Only those duplicates go; the load's audit still checks the key."""
+    kept = df.sort("date_modified", descending=True, nulls_last=True).unique(subset=INJURY_KEY, keep="first",
+                                                                           maintain_order=True)
+    return kept, df.height - kept.height
+
+
+@dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
+def raw_injuries(snowflake: SnowflakeResource) -> dg.MaterializeResult:
+    """Weekly injury reports, one row per player, team and week, from nflreadpy.load_injuries(),
+    2009 (where nflverse's data starts) on. Small (about 6,000 rows a season), so it's loaded
+    whole, like rosters."""
+    seasons = range(FIRST_INJURY_SEASON, CURRENT_SEASON + 1)
+    df = pl.concat([normalize_injuries(nfl.load_injuries([s])) for s in seasons])
+    df, dropped = keep_latest_reports(df)
+
+    path = RAW_DIR / "injuries.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+    return dg.MaterializeResult(
+        metadata={**parquet_metadata(df, path, ["season", "week", "team", "full_name", "report_status"]),
+                  "superseded_reports_dropped": dropped,
+                  **load_to_snowflake(snowflake, df, path, "INJURIES")}
+    )
 
 
 @dg.asset(group_name="raw", kinds={"python", "parquet", "snowflake"})
