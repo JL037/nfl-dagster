@@ -2,7 +2,8 @@
 -- the team listed (Out, Doubtful, Questionable, ...) and the practice status. Players on injured
 -- reserve aren't on these reports, so counting reports undercounts games missed.
 -- Team codes become play-by-play's (OAK -> LV, SD -> LAC, STL -> LA); whitespace-only values
--- (some practice statuses) become null.
+-- (some practice statuses are a newline and spaces) become null. Snowflake's trim() removes only
+-- spaces unless told otherwise, so the characters are listed: space, tab, newline, return.
 select
     gsis_id || '-' || team_code || '-' || season || '-' || week || '-' || game_type as injury_report_key,
     season,
@@ -13,11 +14,11 @@ select
     gsis_id as player_id,
     full_name as player_name,
     position,
-    nullif(trim(report_status), '') as game_status,
-    nullif(trim(report_primary_injury), '') as injury,
-    nullif(trim(report_secondary_injury), '') as secondary_injury,
-    nullif(trim(practice_status), '') as practice_status,
-    nullif(trim(practice_primary_injury), '') as practice_injury
+    nullif(trim(report_status, ' \t\n\r'), '') as game_status,
+    nullif(trim(report_primary_injury, ' \t\n\r'), '') as injury,
+    nullif(trim(report_secondary_injury, ' \t\n\r'), '') as secondary_injury,
+    nullif(trim(practice_status, ' \t\n\r'), '') as practice_status,
+    nullif(trim(practice_primary_injury, ' \t\n\r'), '') as practice_injury
 from (
     select
         *,
