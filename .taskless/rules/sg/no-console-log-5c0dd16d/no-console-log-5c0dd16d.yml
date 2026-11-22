@@ -1,0 +1,10 @@
+rule:
+  pattern: console.log($$$ARGS)
+id: no-console-log-5c0dd16d
+language: javascript
+message: Avoid using console.log in production code.
+note: console.log statements are often used for debugging and should be removed or replaced with a proper logging library before shipping to production.
+severity: warning
+metadata:
+  generated_by: taskless
+  generated_at: '2026-11-22T21:28:45.933Z'

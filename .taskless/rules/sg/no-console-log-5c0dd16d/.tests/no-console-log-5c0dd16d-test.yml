@@ -1,0 +1,27 @@
+id: no-console-log-5c0dd16d
+valid:
+  - |
+    function add(a, b) {
+      return a + b;
+    }
+
+    const logger = require('./logger');
+    logger.info('Server started');
+  - |
+    console.warn('this is a warning');
+    console.error('this is an error');
+invalid:
+  - |
+    function tryAstGrep() {
+      console.log('Hello World');
+    }
+  - |
+    console.log('debug: ', key, value);
+  - |
+    console.log();
+  - |
+    function process(data) {
+      deeplyNested({
+        target: console.log(data)
+      });
+    }
